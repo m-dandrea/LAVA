@@ -27,17 +27,20 @@ from shapely.geometry import mapping
 from unidecode import unidecode
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 
+#https://www.earthenv.org/topography
+
 #only mainland of country
 only_mainland = 0
-GOAS_OSM = 0
+GOAS = 0
+consider_OSM = 0
 
 # Record the starting time
 start_time = time.time()
 
 ############### Define study region ############### use geopackage from gadm.org to inspect in QGIS
-country_code='DEU' #PRT
+country_code='DEU' #PRT  #Städteregion Aachen in level 2 #Porto in level 1
 gadm_level=2
-region_name='Elbe-Elster'  #needs a name (if country is studied, then use country name)
+region_name='Städteregion Aachen'  #needs a name (if country is studied, then use country name)
 ##################################################
 
 # Get paths to data files
@@ -53,24 +56,22 @@ demRasterPath = os.path.join(data_path, 'gebco','gebco_DEU.tif')
 #regionPath = os.path.join(data_path, 'region.geojson')
 #region = gpd.read_file(regionPath)#.set_index('NAME_2')
 
-
-
-# Define output directories
-glaes_output_dir = os.path.join(dirname, 'data', f'{region_name}')
-os.makedirs(glaes_output_dir, exist_ok=True)
-#spider_output_dir = os.path.join(dirname, 'Inputs_Spider', 'data')
-#os.makedirs(spider_output_dir, exist_ok=True)
-
-
-
-
-print("Prepping " + region_name + "...")
-
 # Get region name without accents, spaces, apostrophes, or periods for saving files
 region_name_clean = unidecode(region_name)
 region_name_clean = region_name_clean.replace(" ", "")
 region_name_clean = region_name_clean.replace(".", "")
 region_name_clean = region_name_clean.replace("'", "")
+
+
+# Define output directories
+glaes_output_dir = os.path.join(dirname, 'data', f'{region_name_clean}')
+os.makedirs(glaes_output_dir, exist_ok=True)
+#spider_output_dir = os.path.join(dirname, 'Inputs_Spider', 'data')
+#os.makedirs(spider_output_dir, exist_ok=True)
+
+
+print("Prepping " + region_name + "...")
+
 
 #get region boundary
 if gadm_level==0:
@@ -81,12 +82,18 @@ else:
     region = gadm_data.loc[gadm_data[f'NAME_{gadm_level}']==region_name]
 region.set_crs('epsg:4326', inplace=True) #pygadm lib extracts information from the GADM dataset as GeoPandas GeoDataFrame. GADM.org provides files in coordinate reference system is longitude/latitude and the WGS84 datum.
 print(f'region geojson loaded CRS: {region.crs}')
+region.to_file(os.path.join(glaes_output_dir, f'{region_name_clean}_4326.geojson'), driver='GeoJSON', encoding='utf-8')
 
 
 # calculate UTM zone based on representative point of country
 representative_point = region.representative_point().iloc[0]
 latitude, longitude = representative_point.y, representative_point.x
 EPSG = int(32700 - round((45 + latitude) / 90, 0) * 100 + round((183 + longitude) / 6, 0))
+
+###
+EPSG=3035
+###
+
 print(f'region local CRS (UTM): {EPSG}')
 with open(os.path.join(glaes_output_dir, f'{region_name_clean}_EPSG.pkl'), 'wb') as file:
     pickle.dump(EPSG, file)
@@ -96,7 +103,7 @@ region.to_crs(epsg=EPSG, inplace=True) #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 print(f'region projected to local CRS: {region.crs}')
 region.to_file(os.path.join(glaes_output_dir, f'{region_name_clean}_{EPSG}.geojson'), driver='GeoJSON', encoding='utf-8')
 
-if GOAS_OSM == 1:
+if GOAS == 1:
     # Buffer the "country" polygon by 1000 meters to create a buffer zone
     country_buffer = country['geometry'].buffer(10000)
     country_buffer.make_valid()
@@ -124,16 +131,34 @@ if GOAS_OSM == 1:
     # Save OSM layers in 4236 gpkgs for spider
     OSM_country_path = os.path.join(OSM_path, f"{country_name_clean}")
 
-    OSM_waterbodies = gpd.read_file(os.path.join(OSM_country_path, 'gis_osm_water_a_free_1.shp'))
-    OSM_waterbodies.to_file(os.path.join(spider_output_dir, f'{country_name_clean}_waterbodies.gpkg'), driver='GPKG', encoding='utf-8')
-    OSM_roads = gpd.read_file(os.path.join(OSM_country_path, f'gis_osm_roads_free_1.shp'))
-    OSM_roads.to_file(os.path.join(spider_output_dir, f'{country_name_clean}_roads.gpkg'), driver='GPKG', encoding='utf-8')
-    OSM_waterways = gpd.read_file(os.path.join(OSM_country_path, 'gis_osm_waterways_free_1.shp'))
-    OSM_waterways.to_file(os.path.join(spider_output_dir, f'{country_name_clean}_waterways.gpkg'), driver='GPKG', encoding='utf-8')
 
 # Convert country back to EPSC 4326 to trim landcover and save this version for SPIDER as well
 region.to_crs(epsg=4326, inplace=True)
 #region.to_file(os.path.join(spider_output_dir, f'{country_name_clean}.gpkg'), driver='GPKG', encoding='utf-8')
+
+if consider_OSM == 1:
+    OSM_country_path = os.path.join(data_path, 'OSM', country_code)
+
+    #read files
+    #OSM_waterbodies = gpd.read_file(os.path.join(OSM_country_path, 'gis_osm_water_a_free_1.shp'))
+    #OSM_waterbodies.to_file(os.path.join(spider_output_dir, f'{country_name_clean}_waterbodies.gpkg'), driver='GPKG', encoding='utf-8')
+    OSM_railways = gpd.read_file(os.path.join(OSM_country_path, f'gis_osm_railways_free_1.shp'))
+    #OSM_roads = gpd.read_file(os.path.join(OSM_country_path, f'gis_osm_roads_free_1.shp'))
+    #OSM_roads.to_file(os.path.join(spider_output_dir, f'{country_name_clean}_roads.gpkg'), driver='GPKG', encoding='utf-8')
+    #OSM_waterways = gpd.read_file(os.path.join(OSM_country_path, 'gis_osm_waterways_free_1.shp'))
+    #OSM_waterways.to_file(os.path.join(spider_output_dir, f'{country_name_clean}_waterways.gpkg'), driver='GPKG', encoding='utf-8')
+
+    #clip files 
+    OSM_railways_clipped = gpd.clip(OSM_railways, region)
+    #OSM_roads_clipped = gpd.clip(OSM_roads, region)
+
+    #reproject and save files
+    OSM_railways_clipped.to_crs(epsg=EPSG, inplace=True)
+    OSM_railways_clipped.to_file(os.path.join(glaes_output_dir, f'OSM_railways_{region_name_clean}_{EPSG}.geojson'), driver='GeoJSON', encoding='utf-8')
+    #OSM_roads_clipped.to_crs(epsg=EPSG, inplace=True)
+    #OSM_roads_clipped.to_file(os.path.join(glaes_output_dir, f'OSM_roads_{region_name_clean}_{EPSG}.geojson'), driver='GeoJSON', encoding='utf-8')
+
+
 
 print('landcover')
 print('clip raster to region')
