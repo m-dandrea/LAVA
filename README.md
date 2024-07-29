@@ -7,13 +7,13 @@ To do so, multiple steps need to be caried out including a detailed land analysi
 
 
 ## 0. Files setup
-a) clone the repository:
+__a) clone the repository:__
 
 `% git clonehttps://github.com/jome1/land-analysis-and-eligibility.git`
 
 After cloning, navigate to the top-level folder of the repo.
 
-b) install python dependencies
+__b) install python dependencies__
 
 The Python package requirements to use these tools are in the `requirements.yml` file. You can install these requirements in a new environment using `conda`:
 
