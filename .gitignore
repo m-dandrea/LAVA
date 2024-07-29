@@ -1,5 +1,5 @@
 *
-!envs/
+!envs/requirements.yaml
 !data_exploration.ipynb
 !GLAES_Aachen.ipynb
 !GLAES_Aachen_test_data.ipynb
