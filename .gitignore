@@ -1,6 +1,6 @@
 *
-!envs
-!data_exploration.ipnyb
+!envs/
+!data_exploration.ipynb
 !GLAES_Aachen.ipynb
 !GLAES_Aachen_test_data.ipynb
 !legends.py
