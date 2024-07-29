@@ -33,3 +33,13 @@ Moreover, you have to select your study region. It has to be an official adminis
 * `gadm_level =` __*int*__ (administrative level)
 * `region_name =` __*'region_name_as_string'*__ (name of the region)
 Ideally you download the geopackage of the country you are interested in and load it in QGIS to find the right `gadm_level` and `region_name`.
+
+
+
+## 3. Land analysis
+With the JupyterNotebook `data_exploration.ipynb` you can inspect the spatial data of your study region.
+In the second code cell just put the name of your study region as the folder with the preprocessed data is named. Additionally, put the right name of your landcover_source to fetch the correct legend and color dictionary.
+
+
+
+
