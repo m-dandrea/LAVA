@@ -15,9 +15,20 @@ Following data must be downloaded:
 
 
 
-## 1. Spatial data preparation
+## 2. Spatial data preparation
 The script `spatial_data_prep_JOM.py` performs multiple data preprocessing steps to facilitate the land analysis and land eligibility study:
 * download administrative boundary of the study region from gadm.org using the package pygadm
 * calculate the local UTM zone
 * clip and reproject to local UTM zone OSM railways, land cover data and elevation data
 The files are saved to a folder within the __"data"__-folder.
+
+In the beginning of the script you can select:
+* `only_mainland = ` 0 (use all polygons of the study region) or 1 (use only the biggest polygon). This comes in handy when looking at countries with Island like Portugal and you only want to study the mainland of Portugal.
+* `GOAS =` 0 (don't change, work in progress)
+* `consider_OSM =` 0 (don't use OSM data in study region) or 1 (clip OSM data to study region). Currently, only railways are considered.
+* `EPSG_manual =` *'EPSG-Code'* (insert EPSG code like 3035 for Europe if you want to set it manually instead of using the calculated UTM zone)
+Moreover, you have to select your study region. It has to be an official administrative region from GADM.org:
+* `country_code =` string (3 letters ISO code)
+* `gadm_level =` int (administrative level)
+* `region_name =` string (name of the region)
+Ideally you download the geopackage of the country you are interested in and load it in QGIS to find the right `gadm_level` and `region_name`.
