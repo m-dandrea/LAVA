@@ -19,6 +19,7 @@ This script uses administrative boundries from GADM.org via pygadm
 import time
 import os
 import geopandas as gpd
+import json
 import pickle
 import rasterio
 import pygadm
@@ -52,8 +53,9 @@ data_path = os.path.join(dirname, 'Raw_Spatial_Data')
 landcoverRasterPath = os.path.join(data_path, "PROBAV_LC100_global_v3.0.1_2019-nrt_Discrete-Classification-map_EPSG-4326.tif")
 demRasterPath = os.path.join(data_path, 'gebco','gebco_cutout.tif')
 
-OSM_country_path = os.path.join(data_path, 'OSM', 'BerlinBrandenburg')#, country_code)
-
+###############################################################
+OSM_country_path = os.path.join(data_path, 'OSM', 'BerlinBrandenburg') #country_code)
+###############################################################
 
 # Read shapefile of region
 #regionPath = os.path.join(data_path, 'region.geojson')
