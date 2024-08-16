@@ -50,7 +50,7 @@ The script `spatial_data_prep_JOM.py` performs multiple data preprocessing steps
 
 For the preprocessing, some functions are used which are defined in the file __*data_preprocessing.py*__ in the folder "utils".
 
-The files are saved to a folder within the __"data"__-folder named according to the study region.
+The files are saved to a folder within the __"data"__-folder named according to the study region. The GIS-files will be saved in the coordinate reference system of the local UTM zone or in the user defined CRS. Some files are also stored in EPSG 4326 as well. 
 
 In the beginning of the script you can select:
 * `consider_OSM_railways =` __0__ (don't use OSM data in study region) or __1__ (clip OSM data to study region)
