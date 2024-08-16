@@ -58,7 +58,7 @@ start_time = time.time()
 dirname = os.path.dirname(__file__)
 data_path = os.path.join(dirname, 'Raw_Spatial_Data')
 landcoverRasterPath = os.path.join(data_path, "PROBAV_LC100_global_v3.0.1_2019-nrt_Discrete-Classification-map_EPSG-4326.tif")
-demRasterPath = os.path.join(data_path, 'gebco','gebco_cutout.tif')
+demRasterPath = os.path.join(data_path, 'DEM','gebco_cutout.tif')
 if consider_OSM_railways == 1 or consider_OSM_roads == 1 or consider_airports == 1:
     OSM_country_path = os.path.join(data_path, 'OSM', OSM_folder_name) 
 
