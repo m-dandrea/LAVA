@@ -1,10 +1,11 @@
-name: land_analysis
+name: laava
 channels:
   - conda-forge
   - defaults
 dependencies:
   - geopandas
   - rasterio
+  - richdem
   - shapely
   - unidecode
   - pyyaml

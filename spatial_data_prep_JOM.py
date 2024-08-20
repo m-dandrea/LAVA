@@ -103,17 +103,24 @@ EPSG = int(32700 - round((45 + latitude) / 90, 0) * 100 + round((183 + longitude
 if EPSG_manual:
     EPSG=int(EPSG_manual)
 
-
 print(f'CRS to be used: {EPSG}')
 with open(os.path.join(glaes_output_dir, f'{region_name_clean}_EPSG.pkl'), 'wb') as file:
     pickle.dump(EPSG, file)
 
-# reproject country to defined CRS
+# reproject country to defined projected CRS
 region.to_crs(epsg=EPSG, inplace=True) 
 print(f'region projected to defined CRS: {region.crs}')
 region.to_file(os.path.join(glaes_output_dir, f'{region_name_clean}_{EPSG}.geojson'), driver='GeoJSON', encoding='utf-8')
 
-# Convert region back to EPSC 4326 to trim landcover
+# #calculate bounding box with 1000m buffer (region needs to be in projected CRS so meters are the unit)
+# region_copy = region
+# region_copy['buffered']=region_copy.buffer(1000)
+# # Convert buffered region back to EPSC 4326 to get bounding box latitude and longitude 
+# region_buffered_4326 = region_copy.set_geometry('buffered').to_crs(epsg=4326)
+# bounding_box = region_buffered_4326['buffered'].total_bounds
+# print(f"Bounding box: \nminx: {bounding_box[0]}, miny: {bounding_box[1]}, maxx: {bounding_box[2]}, maxy: {bounding_box[3]}")
+
+# Convert region back to EPSC 4326 to trim raster files
 region.to_crs(epsg=4326, inplace=True)
 
 
@@ -121,7 +128,11 @@ if consider_OSM_railways == 1:
     print('processing railways')
     OSM_file = gpd.read_file(os.path.join(OSM_country_path, f'gis_osm_railways_free_1.shp'))
     OSM_railways = OSM_clip_reproject(OSM_file, region, EPSG)
-    OSM_railways.to_file(os.path.join(glaes_output_dir, f'OSM_railways_{region_name_clean}_{EPSG}.geojson'), driver='GeoJSON', encoding='utf-8')
+    # Check if OSM_airports is not empty before saving
+    if not OSM_railways.empty:
+        OSM_railways.to_file(os.path.join(glaes_output_dir, f'OSM_railways_{region_name_clean}_{EPSG}.geojson'), driver='GeoJSON', encoding='utf-8')
+    else:
+        print("No railways found in the region. File not saved.")
 
 if consider_OSM_roads == 1:
     print('processing roads')
@@ -144,7 +155,9 @@ if consider_airports == 1:
     if not OSM_airports.empty:
         OSM_airports.to_file(os.path.join(glaes_output_dir, f'OSM_airports_{region_name_clean}_{EPSG}.geojson'), driver='GeoJSON', encoding='utf-8')
     else:
-        print("No airports found in the region. File not saved.")    
+        print("No airports found in the region. File not saved.")
+
+    
 
 
 print('landcover')
