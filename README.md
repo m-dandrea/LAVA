@@ -3,6 +3,12 @@
 This repo provides tools to calculate the available area in a user defined study region for building renewable energies like solar PV and wind onshore.
 First, all needed data is preprocessed to bring it into the right format. This data can be analyzed to get a better understanding of the study region. Finally, the land eligibility analysis is done with [`atlite`](https://github.com/PyPSA/atlite) or [`GLAES`](https://github.com/FZJ-IEK3-VSA/glaes) (GLAES does not work fully yet).
 
+Fetch landcover and elevation data via API (ESAworldcover and copernicus_30m):
+* Terrascope API: [API documentation](https://vitobelgium.github.io/terracatalogueclient/api.html), [ESAworldvcover Product](https://docs.terrascope.be/#/DataProducts/WorldCover/WorldCover)
+* [openEO API](https://openeo.org/): [API documentation](https://open-eo.github.io/openeo-python-client/), [openEO recorded Webinar](https://terrascope.be/en/news-events/joint-openeo-terrascope-webinar), [another webinar](https://www.youtube.com/watch?v=A35JHj8LM2k&list=PLNxdHvTE74Jy18qTecMcNruUjODMCiEf_&index=3) \
+in order to use ESAworldcover data and Copernicus elevation data, one needs to connect to the copernicus dataspace as the backend. Every user gets [4000 credits per months](https://dataspace.copernicus.eu/analyse/openeo) to carry out processes on this backend. In your [copernicus dataspace account](https://marketplace-portal.dataspace.copernicus.eu/billing) you can see your credits balance and how many credits your copernicus jobs costed. There is also a [Copernicus Dataspace Forum](https://forum.dataspace.copernicus.eu/)\
+[General limitations openEO](https://documentation.dataspace.copernicus.eu/APIs/openEO/openEO.html): tested up to 100x100km at 10m resolution, free tier synchronous requests and batch jobs limited to 2 concurrent requests/jobs. 
+
 # :construction: :warning: Work in progress! :construction_worker:
 
 
@@ -34,11 +40,13 @@ Following data must be downloaded:
 * [CORINE land cover global dataset](https://zenodo.org/records/3939050) from zenodo the file named __*PROBAV_LC100_global_v3.0.1_2019-nrt_Discrete-Classification-map_EPSG-4326.tif*__. Leave the name as it is and put it in the __"Raw_Spatial_Data"__ folder. :warning: Attention: the file size is 1.7 GB
 You can also use landcover data from a different data source (then the coloring needs to be adjusted).
 
-Be aware with land cover data: This type of data is good to estimate the potential but is still away from a precise local measurement. The land cover data is derived from satellite images and prone to erros. Note, that there is often only the category "built-up area" which includes all areas with buildings. So, there is no differentiation between urban areas and stand-alone industrial or agricultural complexes, which may not need so much buffer distance to renewable energy installations. Sometimes even parts of roads are classified as "built-up area" in the land cover data. For a detailed analysis to derive something like priority zones for renewables, detailed local geospatial data is needed, which has a high resolution and differentiates between areas in a more detailed way. 
+> [!NOTE]  
+> Be aware with land cover data: This type of data is good to estimate the potential but is still away from a precise local measurement. The land cover data is derived from satellite images and prone to erros. Note, that there is often only the category "built-up area" which includes all areas with buildings. So, there is no differentiation between urban areas and stand-alone industrial or agricultural complexes, which may not need so much buffer distance to renewable energy installations. Sometimes even parts of roads are classified as "built-up area" in the land cover data. For a detailed analysis to derive something like priority zones for renewables, detailed local geospatial data is needed, which has a high resolution and differentiates between areas in a more detailed way. 
 
 * [OpenStreetMap Shapefile](https://download.geofabrik.de/) of the country where your study region is located. Click on the relevant continent and then country to download the ´.shp.zip´. Somtimes you can go even more granular by clicking on the country. The best is, to use the smallest available area where your study region is still inside to save storage space. Be aware of the files naming. Unzip and put the downloaded OSM data folder inside the __"OSM"__-folder.  
 The OSM data is used to extract railways, roads and airports. Be aware, that these files can quickly become big making the calculations slow. Handle roads with caution. Often there are many roads which can become big files.
 
+> [!NOTE] 
 For a sophisticated potential analysis more data is needed like specific local exclusion zones or protected areas. This depends on the study region and data research as well as engagement with local authorities is needed. A good global dataset for protected areas is [protected planet](https://www.protectedplanet.net/en/thematic-areas/wdpa?tab=WDPA). Moreover, waterways and water areas could be used from OSM Data, because land cover data does not always recognize waterbodies.
 
 
