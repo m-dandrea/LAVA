@@ -59,7 +59,7 @@ For a sophisticated potential analysis __additional data__ is needed like specif
 
 ## 2. Spatial data preparation
 The script `spatial_data_prep_JOM.py` performs multiple data preprocessing steps to facilitate the land analysis and land eligibility study:
-* download administrative boundary of the study region from gadm.org using the package pygadm
+* download administrative boundary of the study region from [gadm.org](gadm.org) using the package pygadm
 * use a custom polygon instead if wished
 * calculate the local UTM zone
 * clip and reproject to local UTM zone OSM railways, roads and airports (roads are also filtered to only consider main roads)
@@ -88,7 +88,7 @@ Moreover, you have to select your study region:
 
 * `custom_polygon_filename =` __*'filename'*__ or keep it an __*empty string*__. The custom polygon must be in .geojson format lying in a folder named "custom_polygon" within the folder "Raw_Spatial_Data"
 
-Ideally you download the geopackage of the country you are interested in and load it in QGIS to find the right `gadm_level` and `region_name`.
+Ideally you download the geopackage from [gadm.org](gadm.org) of the country you are interested in and load it in QGIS to find the right `gadm_level` and `region_name`.
 
 
 
