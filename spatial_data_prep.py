@@ -80,8 +80,8 @@ region_name_clean = region_name_clean.replace("'", "")
 
 
 # Define output directories
-glaes_output_dir = os.path.join(dirname, 'data', f'{region_name_clean}')
-os.makedirs(glaes_output_dir, exist_ok=True)
+output_dir = os.path.join(dirname, 'data', f'{region_name_clean}')
+os.makedirs(output_dir, exist_ok=True)
 
 
 print("Prepping " + region_name + "...")
@@ -100,7 +100,7 @@ else:
     region = gadm_data.loc[gadm_data[f'NAME_{gadm_level}']==region_name]
     region.set_crs('epsg:4326', inplace=True) #pygadm lib extracts information from the GADM dataset as GeoPandas GeoDataFrame. GADM.org provides files in coordinate reference system is longitude/latitude and the WGS84 datum.
 print(f'region geojson loaded CRS: {region.crs}')
-region.to_file(os.path.join(glaes_output_dir, f'{region_name_clean}_4326.geojson'), driver='GeoJSON', encoding='utf-8')
+region.to_file(os.path.join(output_dir, f'{region_name_clean}_4326.geojson'), driver='GeoJSON', encoding='utf-8')
 
 
 # calculate UTM zone based on representative point of country 
@@ -112,13 +112,13 @@ if EPSG_manual:
     EPSG=int(EPSG_manual)
 
 print(f'CRS to be used: {EPSG}')
-with open(os.path.join(glaes_output_dir, f'{region_name_clean}_EPSG.pkl'), 'wb') as file:
+with open(os.path.join(output_dir, f'{region_name_clean}_EPSG.pkl'), 'wb') as file:
     pickle.dump(EPSG, file)
 
 # reproject country to defined projected CRS
 region.to_crs(epsg=EPSG, inplace=True) 
 print(f'region projected to defined CRS: {region.crs}')
-region.to_file(os.path.join(glaes_output_dir, f'{region_name_clean}_{EPSG}.geojson'), driver='GeoJSON', encoding='utf-8')
+region.to_file(os.path.join(output_dir, f'{region_name_clean}_{EPSG}.geojson'), driver='GeoJSON', encoding='utf-8')
 
 
 #calculate bounding box with 1000m buffer (region needs to be in projected CRS so meters are the unit)
@@ -135,9 +135,9 @@ try:
     coastlines = gpd.read_file(coastlinesFilePath)
     coastlines_region = coastlines.clip(bounding_box)
     if not coastlines_region.empty:
-        coastlines_region.to_file(os.path.join(glaes_output_dir, f'goas_{region_name_clean}_4326.geojson'), driver='GeoJSON', encoding='utf-8')
+        coastlines_region.to_file(os.path.join(output_dir, f'goas_{region_name_clean}_4326.geojson'), driver='GeoJSON', encoding='utf-8')
         coastlines_region.to_crs(epsg=EPSG, inplace=True)
-        coastlines_region.to_file(os.path.join(glaes_output_dir, f'goas_{region_name_clean}_{EPSG}.geojson'), driver='GeoJSON', encoding='utf-8')
+        coastlines_region.to_file(os.path.join(output_dir, f'goas_{region_name_clean}_{EPSG}.geojson'), driver='GeoJSON', encoding='utf-8')
     else:
         print('no coastline in study region')
 except:
@@ -154,7 +154,7 @@ if consider_railways == 1:
     OSM_railways = geopandas_clip_reproject(OSM_file, region, EPSG)
     # Check if OSM_airports is not empty before saving
     if not OSM_railways.empty:
-        OSM_railways.to_file(os.path.join(glaes_output_dir, f'OSM_railways_{region_name_clean}_{EPSG}.geojson'), driver='GeoJSON', encoding='utf-8')
+        OSM_railways.to_file(os.path.join(output_dir, f'OSM_railways_{region_name_clean}_{EPSG}.geojson'), driver='GeoJSON', encoding='utf-8')
     else:
         print("No railways found in the region. File not saved.")
 
@@ -168,7 +168,7 @@ if consider_roads == 1:
     #reset index for clean, zero-based index of filtered data
     OSM_roads_filtered.reset_index(drop=True, inplace=True)
     #save file
-    OSM_roads_filtered.to_file(os.path.join(glaes_output_dir, f'OSM_roads_{region_name_clean}_{EPSG}.geojson'), driver='GeoJSON', encoding='utf-8')
+    OSM_roads_filtered.to_file(os.path.join(output_dir, f'OSM_roads_{region_name_clean}_{EPSG}.geojson'), driver='GeoJSON', encoding='utf-8')
 
 if consider_airports == 1:
     print('processing airports')
@@ -177,7 +177,7 @@ if consider_airports == 1:
     OSM_airports = OSM_transport[OSM_transport['code'].isin([5651, 5652])] #5651: large airport, 5652: small airport or airfield
     # Check if OSM_airports is not empty before saving
     if not OSM_airports.empty:
-        OSM_airports.to_file(os.path.join(glaes_output_dir, f'OSM_airports_{region_name_clean}_{EPSG}.geojson'), driver='GeoJSON', encoding='utf-8')
+        OSM_airports.to_file(os.path.join(output_dir, f'OSM_airports_{region_name_clean}_{EPSG}.geojson'), driver='GeoJSON', encoding='utf-8')
     else:
         print("No airports found in the region. File not saved.")
 
@@ -188,7 +188,7 @@ if consider_waterbodies == 1:
     OSM_waterbodies_filtered = OSM_waterbodies[OSM_waterbodies['code'].isin([8200, 8201, 8202])] #8200: unspecified waterbodies like lakes, 8201: reservoir, 8202: river
     # Check if OSM_waterbodies_filtered is not empty before saving
     if not OSM_waterbodies_filtered.empty:
-        OSM_waterbodies_filtered.to_file(os.path.join(glaes_output_dir, f'OSM_waterbodies_{region_name_clean}_{EPSG}.geojson'), driver='GeoJSON', encoding='utf-8')
+        OSM_waterbodies_filtered.to_file(os.path.join(output_dir, f'OSM_waterbodies_{region_name_clean}_{EPSG}.geojson'), driver='GeoJSON', encoding='utf-8')
     else:
         print("No waterbodies found in the region. File not saved.")
 
@@ -206,7 +206,7 @@ if consider_additional_exclusion_polygons == 1:
             gdf = gpd.read_file(filepath) # Read the file into a GeoDataFrame
             gdf_clipped_reprojected = geopandas_clip_reproject(gdf, region, EPSG)
             if not gdf_clipped_reprojected.empty:
-                gdf_clipped_reprojected.to_file(os.path.join(glaes_output_dir, f'additional_exclusion_{count}_{region_name_clean}_{EPSG}.gpkg'), driver='GPKG')
+                gdf_clipped_reprojected.to_file(os.path.join(output_dir, f'additional_exclusion_{count}_{region_name_clean}_{EPSG}.gpkg'), driver='GPKG')
                 count = count + 1
 
 
@@ -215,9 +215,9 @@ print('landcover')
 if landcover_source == 'openeo':
     connection = openeo.connect(url="openeo.dataspace.copernicus.eu").authenticate_oidc()
 
-    output_path = os.path.join(glaes_output_dir, f'landcover_{region_name_clean}_EPSG{EPSG}.tif')
+    output_path = os.path.join(output_dir, f'landcover_{region_name_clean}_EPSG{EPSG}.tif')
 
-    with open(os.path.join(glaes_output_dir, f'{region_name_clean}_4326.geojson'), 'r') as file: #use region file in EPSG 4326 because openeo default file is in 4326
+    with open(os.path.join(output_dir, f'{region_name_clean}_4326.geojson'), 'r') as file: #use region file in EPSG 4326 because openeo default file is in 4326
         aoi = json.load(file)
 
     datacube_landcover = connection.load_collection("ESA_WORLDCOVER_10M_2021_V2")
@@ -225,11 +225,16 @@ if landcover_source == 'openeo':
     masked_datacube = datacube_landcover.mask_polygon(aoi)
     #reproject landcover to EPSG 32633 and dont change resolution thereby
     landcover = masked_datacube.resample_spatial(projection=EPSG, resolution=0) #resolution=0 does not change resolution
-    #download
-    landcover.download(output_path)
+    
+    result = landcover.save_result('GTiFF')
+    # Creating a new batch job at the back-end by sending the datacube information.
+    job = result.create_job(job_options={"do_extent_check": False})
+    # Starts the job and waits until it finished to download the result.
+    job.start_and_wait()
+    job.get_results().download_file(output_path) 
 
 if landcover_source == 'file':
-    clip_reproject_raster(landcoverRasterPath, region_name_clean, region, 'landcover', EPSG, 'nearest', glaes_output_dir)
+    clip_reproject_raster(landcoverRasterPath, region_name_clean, region, 'landcover', EPSG, 'nearest', output_dir)
 
 
 print('DEM') #block comment: SHIFT+ALT+A, multiple line comment: STRG+#
@@ -239,9 +244,9 @@ try:
     # if landcover_source == 'openeo':
     #     connection = openeo.connect(url="openeo.dataspace.copernicus.eu").authenticate_oidc()
 
-    #     output_path = os.path.join(glaes_output_dir, f'DEM_{region_name_clean}_EPSG{EPSG}_resampled.tif')
+    #     output_path = os.path.join(output_dir, f'DEM_{region_name_clean}_EPSG{EPSG}_resampled.tif')
 
-    #     with open(os.path.join(glaes_output_dir, f'{region_name_clean}_4326.geojson'), 'r') as file: #use region file in EPSG 4326 because openeo default file is in 4326
+    #     with open(os.path.join(output_dir, f'{region_name_clean}_4326.geojson'), 'r') as file: #use region file in EPSG 4326 because openeo default file is in 4326
     #         aoi = json.load(file)
 
     #     datacube_dem = connection.load_collection("COPERNICUS_30")
@@ -254,36 +259,36 @@ try:
     
     # if landcover_source == 'file':
 
-    clip_reproject_raster(demRasterPath, region_name_clean, region, 'DEM', EPSG, 'bilinear', glaes_output_dir)
+    clip_reproject_raster(demRasterPath, region_name_clean, region, 'DEM', EPSG, 'bilinear', output_dir)
 
     #reproject and match resolution of DEM to landcover data
-    infile=os.path.join(glaes_output_dir, f'DEM_{region_name_clean}_EPSG{EPSG}.tif')
-    match=os.path.join(glaes_output_dir, f'landcover_{region_name_clean}_EPSG{EPSG}.tif')
-    outfile=os.path.join(glaes_output_dir, f'DEM_{region_name_clean}_EPSG{EPSG}_resampled.tif')
+    infile=os.path.join(output_dir, f'DEM_{region_name_clean}_EPSG{EPSG}.tif')
+    match=os.path.join(output_dir, f'landcover_{region_name_clean}_EPSG{EPSG}.tif')
+    outfile=os.path.join(output_dir, f'DEM_{region_name_clean}_EPSG{EPSG}_resampled.tif')
     reproj_match(infile, match, 'bilinear', outfile)
 
 
     #create slope map (https://www.earthdatascience.org/tutorials/get-slope-aspect-from-digital-elevation-model/)
-    dem_file = richdem.LoadGDAL(os.path.join(glaes_output_dir, f'DEM_{region_name_clean}_EPSG{EPSG}_resampled.tif'))
+    dem_file = richdem.LoadGDAL(os.path.join(output_dir, f'DEM_{region_name_clean}_EPSG{EPSG}_resampled.tif'))
     slope = richdem.TerrainAttribute(dem_file, attrib='slope_degrees')
-    richdem.SaveGDAL(os.path.join(glaes_output_dir, f'slope_{region_name_clean}_EPSG{EPSG}_resampled.tif'), slope)
+    richdem.SaveGDAL(os.path.join(output_dir, f'slope_{region_name_clean}_EPSG{EPSG}_resampled.tif'), slope)
 
     #create aspect map (https://www.earthdatascience.org/tutorials/get-slope-aspect-from-digital-elevation-model/)
-    dem_file = richdem.LoadGDAL(os.path.join(glaes_output_dir, f'DEM_{region_name_clean}_EPSG{EPSG}_resampled.tif'))
+    dem_file = richdem.LoadGDAL(os.path.join(output_dir, f'DEM_{region_name_clean}_EPSG{EPSG}_resampled.tif'))
     aspect = richdem.TerrainAttribute(dem_file, attrib='aspect')
-    richdem.SaveGDAL(os.path.join(glaes_output_dir, f'aspect_{region_name_clean}_EPSG{EPSG}_resampled.tif'), aspect)
+    richdem.SaveGDAL(os.path.join(output_dir, f'aspect_{region_name_clean}_EPSG{EPSG}_resampled.tif'), aspect)
 
     #create map showing pixels with slope bigger X and aspect between Y and Z (north facing with slope where you would not build PV)
     condition = (slope > X) & ((aspect >= Y) | (aspect <= Z))
     result = np.where(condition, 1, 0) # Create a new raster with the filtered results
-    with rasterio.open(os.path.join(glaes_output_dir, f'slope_{region_name_clean}_EPSG{EPSG}_resampled.tif')) as src:
+    with rasterio.open(os.path.join(output_dir, f'slope_{region_name_clean}_EPSG{EPSG}_resampled.tif')) as src:
         slope = src.read(1)
         profile = src.profile
     profile.update(dtype=rasterio.float32, count=1, nodata=0) # Update the profile for the output raster
     
     if result.sum() > 0:
         # Write the result to a new raster file
-        with rasterio.open(os.path.join(glaes_output_dir, f'north_facing_{region_name_clean}_EPSG{EPSG}_resampled.tif'), 'w', **profile) as dst:
+        with rasterio.open(os.path.join(output_dir, f'north_facing_{region_name_clean}_EPSG{EPSG}_resampled.tif'), 'w', **profile) as dst:
             dst.write(result.astype(rasterio.float32), 1)
     if result.sum() == 0:
         print('no north-facing pixel exceeding threshold slope')

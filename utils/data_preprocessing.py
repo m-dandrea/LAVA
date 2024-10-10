@@ -143,7 +143,7 @@ def reproj_match(infile, match, resampling_method, outfile): #source: https://py
                            "nodata": 0})
         print("Coregistered to shape:", dst_height,dst_width,'\n Affine',dst_transform)
         # open output
-        with rasterio.open(outfile, "w", **dst_kwargs) as dst:
+        with rasterio.open(outfile, "w", **dst_kwargs, compress='lzw') as dst:
             # iterate through bands and write using reproject function
             for i in range(1, src.count + 1):
                 reproject(
