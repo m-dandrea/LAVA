@@ -9,7 +9,7 @@ consider_waterbodies: 0
 consider_additional_exclusion_polygons: 0 
 
 consider_WDPA: 0
-wdpa_url: 'https://d1gam3xoknrgr2.cloudfront.net/current/WDPA_WDOECM_Nov2024_Public_FRA.zip'
+wdpa_url: 'https://d1gam3xoknrgr2.cloudfront.net/current/WDPA_WDOECM_Nov2024_Public_DEU.zip'
 
 
 EPSG_manual: ''  #if None use empty string

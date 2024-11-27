@@ -6,7 +6,7 @@ created August 2024
 
 
 This script prepares raw spatial data for land exclusion in GLAES or ATLITE.
-The raw inputs should be downloaded to /Raw_Spatial_Data before execution. Alternatively, the openEO API can be used to download data automatically.
+The raw inputs should be downloaded to /Raw_Spatial_Data before execution. For landcover the openEO API can be used to download data automatically.
 The outputs are saved in /data.
 
 compare boundaries between different data sources: https://www.geoboundaries.org/visualize.html?country=DEU&mainSource=OSM-Boundaries&comparisonSource=geoBoundaries+%28Open%29&mainLevel=2&comparisonLevel=2
@@ -39,7 +39,7 @@ logging.basicConfig(handlers=[
         logging.StreamHandler()
         ], level=logging.INFO) #source: https://stackoverflow.com/questions/13733552/logger-configuration-to-log-to-file-and-print-to-stdout
 
-with open("configs/config_IDN.yaml", "r", encoding="utf-8") as f:
+with open("configs/config_EE.yaml", "r", encoding="utf-8") as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
 
 #-------data config------- 
