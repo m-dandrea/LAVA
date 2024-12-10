@@ -4,8 +4,8 @@ LAVA is a tool to calculate the available area in a user defined study region fo
 First, all needed data is preprocessed to bring it into the right format. This data can be analyzed to get a better understanding of the study region. Finally, the land eligibility analysis is done with [`atlite`](https://github.com/PyPSA/atlite) or [`GLAES`](https://github.com/FZJ-IEK3-VSA/glaes) (GLAES does not work fully yet).
 
 
-Landcover data can be read from a local file or automatically fetched via the [openEO API](https://openeo.org/):\ 
-This powerful API can connect to multiple back-ends. Data processing can be done on the back-end if wanted.\ 
+Landcover data can be read from a local file or automatically fetched via the [openEO API](https://openeo.org/): 
+This powerful API can connect to multiple back-ends. Data processing can be done on the back-end if wanted. 
 * [API documentation](https://open-eo.github.io/openeo-python-client/)
 * [openEO recorded Webinar](https://terrascope.be/en/news-events/joint-openeo-terrascope-webinar), [another webinar](https://www.youtube.com/watch?v=A35JHj8LM2k&list=PLNxdHvTE74Jy18qTecMcNruUjODMCiEf_&index=3) \
 In order to use ESAworldcover data via openEO, one needs to connect to the copernicus dataspace as the backend. Every user gets [10000 credits per months](https://dataspace.copernicus.eu/analyse/openeo) to carry out processes on this backend. In your [copernicus dataspace account](https://marketplace-portal.dataspace.copernicus.eu/billing) you can see your credits balance and how many credits your copernicus jobs costed. There is also a [Copernicus Dataspace Forum](https://forum.dataspace.copernicus.eu/)\
