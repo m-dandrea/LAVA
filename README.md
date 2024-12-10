@@ -63,8 +63,10 @@ Be aware with __land cover data__: This type of data is good to estimate the pot
 Take additional care when using a study region with a __coastline__. Coastlines can be very difficult and complex. Always cross check the results.
 
 
+## 2. Configuration
 
-## 2. Spatial data preparation
+
+## 3. Spatial data preparation
 The script `spatial_data_prep_JOM.py` performs multiple data preprocessing steps to facilitate the land analysis and land eligibility study:
 * download administrative boundary of the study region from [gadm.org](gadm.org) using the package pygadm
 * use a custom polygon instead if wished
@@ -99,14 +101,14 @@ Ideally you download the geopackage from [gadm.org](gadm.org) of the country you
 
 
 
-## 3. Land analysis
+## 4. Land analysis
 With the JupyterNotebook `data_exploration.ipynb` you can inspect the spatial data of your study region.
 In the second code cell just put the name of your study region as the folder with the preprocessed data is named. Additionally, put the right name of your landcover_source to fetch the correct legend and color dictionary.
 
 You need to run this notebook also to get the land use codes and the pixel size stored in seperate .json files.
 
 
-## 4. Land eligibility
+## 5. Land eligibility
 With the JupyterNotebook `Atlite_custom_region.ipynb` you can finally derive the available area of your study region. Set the name of your region with `region_name` and if necessary also set the EPSG code with `EPSG_custom` or leave it as an empty string. You can then run all cells. You can use the predefined exclusions or customize it yourself. 
 The code automatically recognizes if a file does not exist and thus does not take into account the respective file for the exclusion (e.g. there is no coastlines files when having a study region without a coast).
 
