@@ -67,7 +67,7 @@ The [Copernicus Global 30 meter Digital Elevation Model dataset](https://dataspa
 
 > [!NOTE]  
 Be aware with __landcover data__: This type of data is good to estimate the potential but is still away from a precise local measurement. The landcover data is derived from satellite images and prone to erros. Note, that there is often only the category "built-up area" which includes all areas where something is built on the land. So, there is no differentiation between urban areas and stand-alone industrial or agricultural complexes, which may not need so much buffer distance to renewable energy installations. Sometimes even parts of roads are classified as "built-up area" in the landcover data. For a detailed analysis to derive something like priority zones for renewables, detailed local geospatial data is needed, which has a high resolution and differentiates between areas in a more detailed way.\
-> To better model urban areas, it is possible to use gridded population data as a proxy dataset, instead of using the "built-up" area from the landcover data.
+> It is possible to use gridded population data as a proxy dataset, but that might miss some areas with houses. Careful consideration must be given to which data is used.
 
 > [!NOTE]
 Take additional care when using a study region with a __coastline__. Coastlines can be very difficult and complex. Always cross check the results.
