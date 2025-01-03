@@ -39,7 +39,7 @@ logging.basicConfig(handlers=[
         logging.StreamHandler()
         ], level=logging.INFO) #source: https://stackoverflow.com/questions/13733552/logger-configuration-to-log-to-file-and-print-to-stdout
 
-with open("configs/config_EE.yaml", "r", encoding="utf-8") as f:
+with open("configs/config.yaml", "r", encoding="utf-8") as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
 
 #-------data config------- 
@@ -187,7 +187,7 @@ if consider_roads == 1:
     OSM_file = gpd.read_file(os.path.join(OSM_country_path, f'gis_osm_roads_free_1.shp'))
     OSM_roads = geopandas_clip_reproject(OSM_file, region, EPSG)
     #filter roads. see https://www.geofabrik.de/data/geofabrik-osm-gis-standard-0.7.pdf page19
-    OSM_roads_filtered = OSM_roads[OSM_roads['code'].isin([5111, 5112, 5113, 5114, 5115, 5121, 5122, 5125, 5131, 5132, 5133, 5134, 5135])]
+    OSM_roads_filtered = OSM_roads[OSM_roads['code'].isin([5111, 5112, 5113, 5114, 5115, 5121, 5131, 5132, 5133, 5134, 5135])]
     #OSM_roads_clipped_filtered = OSM_roads_clipped[~OSM_roads_clipped['code'].isin([5141])] #keep all roads except with code listed (eg 5141)
     #reset index for clean, zero-based index of filtered data
     OSM_roads_filtered.reset_index(drop=True, inplace=True)

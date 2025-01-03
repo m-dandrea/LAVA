@@ -40,3 +40,23 @@ Z: 50
 
 #world database of protected areas
 wdpa_consider_status: ["Adopted", "Designated", "Established", "Inscribed"] #all possibilies: "Adopted", "Designated", "Established", "Inscribed", "Proposed"
+
+
+
+#exclusions (buffer in meters) (here landcover codes for openeo as default example)
+landcover_without_buffer: [80,111,114,115,116] #list of landcover codes
+landcover_with_buffer: #dictionary of landcover code with corresponding buffer
+  50: 500
+
+max_elevation: 2000 #meters
+max_slope: 20 #degrees
+
+railways_buffer: 100 
+roads_buffer: 100 
+airports_buffer: 5000
+waterbodies_buffer: 5
+coastlines_buffer: 100
+protectedAreas_buffer: 0
+
+#area filter
+min_pixels_connected: 0

@@ -20,7 +20,7 @@ from qgis.gui import QgsMapCanvas
 
 
 
-with open("configs/config_IDN.yaml", "r", encoding="utf-8") as f:
+with open("configs/config.yaml", "r", encoding="utf-8") as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
 
 
