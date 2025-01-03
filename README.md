@@ -74,34 +74,10 @@ Take additional care when using a study region with a __coastline__. Coastlines 
 
 
 ## 2. Configuration
-In the `config.yaml` file you can configure the data preprocessing. So, nothing needs to be changed in the `spatial_data_prep.py` script.
+In the `config.yaml` file you can configure the data preprocessing and the land exclusion. In the scripts only the name of the `config.yaml` file needs to be changed if necessary.
 
-You can choose which data you want to consider in the preprocessing:
-* `landcover_source:` __openeo__ (to use openEO connection to ESAworldcover) or __file__ to use local landcover data file
-* `consider_coastlines:` __0__ or __1__ 
-* `consider_OSM_railways:` __0__ (don't use OSM railways data in study region) or __1__ (clip OSM railways data to study region)
-* `consider_OSM_roads:` __0__  or __1__  Be careful with roads. The file size can quickly become big and the proessing takes more time.
-* `consider_OSM_airports:` __0__ or __1__
-* `consider_waterbodies:` __0__ or __1__
-
-* `consider_additional_exclusion_polygons:` __0__ or __1__ (uses the polygons lying in the folder "additional_exclusion_polygons")
-
-* `consider_WDPA:` __0__ or __1__ (if protected areas considered, then also provide wdpa_url)
-* `wdpa_url:` __*URL to WDPA*__ (see explanation above)
-
-* `EPSG_manual:` __*'EPSG-Code'*__ (insert EPSG code like 3035 for Europe if you want to set it manually instead of using the calculated UTM zone) or keep it an __*empty string*__
-
-Moreover, you have to select your study region. When using the automatic download from gadm.org, you have to specify the name of the region (region_name) and the GADM level as it is used by gadm.org. You can just browse the [gadm-pages](https://gadm.org/maps.html) by clicking on the respective country and click through the "sub-divisions" until you found your study region.
-* `region_name:` __*'region_name_as_string'*__ (name of the region, also the name of the output folder)
-* `OSM_folder_name:` __*'name_as_string'*__
-* `country_code:` __*'country_code_as_string'*__ (3 letters ISO code)
-* `gadm_level:` __*int*__ (administrative level)
-
-* `custom_polygon_filename:` __*'filename'*__ or keep it an __*empty string*__. The custom polygon must be in .geojson format lying in a folder named "custom_polygon" within the folder "Raw_Spatial_Data"
-
-Ideally you download the geopackage from [gadm.org](gadm.org) of the country you are interested in and load it in QGIS to find the right `gadm_level` and `region_name`.
-
-
+You can choose which data you want to consider in the preprocessing.
+Moreover, you have to select your study region. When using the automatic download from gadm.org, you have to specify the name of the region (region_name) and the GADM level as it is used by gadm.org. Ideally you download the geopackage of the country you are interested in from [gadm.org](gadm.org) and load it into QGIS to find the right `gadm_level` and `region_name`.
 
 
 ## 3. Spatial data preparation
@@ -130,10 +106,10 @@ You need to run this notebook also to get the land use codes and the pixel size 
 
 
 ## 5. Land eligibility
-With the JupyterNotebook `Atlite_custom_region.ipynb` you can finally derive the available area of your study region. Set the name of your region with `region_name` and if necessary also set the EPSG code with `EPSG_custom` or leave it as an empty string. You can then run all cells. You can use the predefined exclusions or customize it yourself. 
+With the JupyterNotebook `Atlite_custom_region.ipynb` you can finally derive the available area of your study region. You can use the predefined exclusions or customize it yourself. 
 The code automatically recognizes if a file does not exist and thus does not take into account the respective file for the exclusion (e.g. there is no coastlines files when having a study region without a coast).
 
 
-### More info
+## 6. More info
 * Terrascope API: not implemented because of limited functionalities (e.g. only downloads tiles, data cannot be clipped to area of interest). [API documentation](https://vitobelgium.github.io/terracatalogueclient/api.html), [ESAworldvcover Product](https://docs.terrascope.be/#/DataProducts/WorldCover/WorldCover), 
 
