@@ -30,5 +30,6 @@
 !other
 !other/pyrosm_test.ipynb
 !other/OSMnx.ipynb
+!other/earthOSM_test.ipynb
 !other/color_raster_file.ipynb
 !other/resampling_reprojecting.ipynb
