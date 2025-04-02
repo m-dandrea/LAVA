@@ -256,53 +256,57 @@ if landcover_source == 'openeo':
     print('processing landcover')
     logging.info('using openeo to get landcover')
 
-    connection = openeo.connect(url="openeo.dataspace.copernicus.eu").authenticate_oidc()
-
     output_path = os.path.join(output_dir, f'landcover_{region_name_clean}_EPSG{EPSG}.tif')
-
-    if custom_study_area_filename:
-        with open(custom_study_area_filepath, 'r') as file: #use region file in EPSG 4326 because openeo default file is in 4326
-            aoi = json.load(file) #load polygon for clipping with openeo            
-    else:
-        with open(os.path.join(output_dir, f'{region_name_clean}_4326.geojson'), 'r') as file: #use region file in EPSG 4326 because openeo default file is in 4326
-            aoi = json.load(file)
-
-    datacube_landcover = connection.load_collection("ESA_WORLDCOVER_10M_2021_V2")
-    #clip landcover directly to area of interest 
-    masked_landcover = datacube_landcover.mask_polygon(aoi)
-    #reproject landcover to EPSG 32633 and dont change resolution thereby
-    landcover = masked_landcover.resample_spatial(projection=EPSG, resolution=0) #resolution=0 does not change resolution
     
-    result = landcover.save_result('GTiFF')
-    job_options = {
-        "do_extent_check": False,
-        "executor-memory": "5G", #set executer-memory higher to process larger regions; see https://forum.dataspace.copernicus.eu/t/batch-process-error-when-using-certain-region/1454 
-        } #see also https://discuss.eodc.eu/t/memory-overhead-problem/424
-    # Creating a new batch job at the back-end by sending the datacube information.
-    job = result.create_job(job_options=job_options, title=f'landcover_{region_name_clean}_{EPSG}')
-    # Starts the job and waits until it finished to download the result.
-    job.start_and_wait()
-    job.get_results().download_file(output_path) 
+    if not os.path.exists(output_path):
+        connection = openeo.connect(url="openeo.dataspace.copernicus.eu").authenticate_oidc()
 
-    #save pixel size and unique land cover codes
-    landcover_information(output_path, output_dir, region_name, EPSG)
+        if custom_study_area_filename:
+            with open(custom_study_area_filepath, 'r') as file: #use region file in EPSG 4326 because openeo default file is in 4326
+                aoi = json.load(file) #load polygon for clipping with openeo            
+        else:
+            with open(os.path.join(output_dir, f'{region_name_clean}_4326.geojson'), 'r') as file: #use region file in EPSG 4326 because openeo default file is in 4326
+                aoi = json.load(file)
 
-    #color openeo landcover file
-    try:
-        from utils import legends 
-        colors_dict_int = getattr(legends, 'colors_dict_esa_worldcover2021_int') #color codes as RGB integers
-        with rasterio.open(output_path) as landcover:
-            band = landcover.read(1, masked=True) # Read the first band, masked=True is masking no data values
-            meta = landcover.meta
-            colors_dict_int_sorted = dict(sorted(colors_dict_int.items())) #can only write color values as int with rasterio 
-            meta.update({'compress': 'DEFLATE'}) # You can also try 'DEFLATE', 'JPEG', or 'PACKBITS'
-            #save colored version
-            with rasterio.open(os.path.join(output_dir, f'landcover_colored_{region_name}_EPSG{EPSG}.tif'), 'w', **meta) as dst:
-                dst.write(band, indexes=1)
-                dst.write_colormap(1, colors_dict_int_sorted) #be aware of dtype: landcover file is saved with int16, so RGB color values also needs to be an integer?
-    except Exception as e:
-        print(e)
-        logging.warning('Something went wrong with coloring the landcover data')
+        datacube_landcover = connection.load_collection("ESA_WORLDCOVER_10M_2021_V2")
+        #clip landcover directly to area of interest 
+        masked_landcover = datacube_landcover.mask_polygon(aoi)
+        #reproject landcover to EPSG 32633 and dont change resolution thereby
+        landcover = masked_landcover.resample_spatial(projection=EPSG, resolution=0) #resolution=0 does not change resolution
+        
+        result = landcover.save_result('GTiFF')
+        job_options = {
+            "do_extent_check": False,
+            "executor-memory": "5G", #set executer-memory higher to process larger regions; see https://forum.dataspace.copernicus.eu/t/batch-process-error-when-using-certain-region/1454 
+            } #see also https://discuss.eodc.eu/t/memory-overhead-problem/424
+        # Creating a new batch job at the back-end by sending the datacube information.
+        job = result.create_job(job_options=job_options, title=f'landcover_{region_name_clean}_{EPSG}')
+        # Starts the job and waits until it finished to download the result.
+        job.start_and_wait()
+        job.get_results().download_file(output_path) 
+
+        #save pixel size and unique land cover codes
+        landcover_information(output_path, output_dir, region_name, EPSG)
+
+        #color openeo landcover file
+        try:
+            from utils import legends 
+            colors_dict_int = getattr(legends, 'colors_dict_esa_worldcover2021_int') #color codes as RGB integers
+            with rasterio.open(output_path) as landcover:
+                band = landcover.read(1, masked=True) # Read the first band, masked=True is masking no data values
+                meta = landcover.meta
+                colors_dict_int_sorted = dict(sorted(colors_dict_int.items())) #can only write color values as int with rasterio 
+                meta.update({'compress': 'DEFLATE'}) # You can also try 'DEFLATE', 'JPEG', or 'PACKBITS'
+                #save colored version
+                with rasterio.open(os.path.join(output_dir, f'landcover_colored_{region_name}_EPSG{EPSG}.tif'), 'w', **meta) as dst:
+                    dst.write(band, indexes=1)
+                    dst.write_colormap(1, colors_dict_int_sorted) #be aware of dtype: landcover file is saved with int16, so RGB color values also needs to be an integer?
+        except Exception as e:
+            print(e)
+            logging.warning('Something went wrong with coloring the landcover data')
+    
+    elif os.path.exists(output_path):
+        logging.info('Landcover not downloaded from openeo. There is already a clipped landcover file in the output folder.')
 
 
 
