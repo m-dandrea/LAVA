@@ -340,4 +340,4 @@ def create_north_facing_pixels(slopeFilePath, aspectFilePath, region_name_clean,
             logging.info('no north-facing pixel exceeding threshold slope')
     
     else:
-        print('EPSG codes of used rasters is not the same')
+        print('EPSG codes of used rasters is not the same')#
