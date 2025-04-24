@@ -340,4 +340,37 @@ def create_north_facing_pixels(slopeFilePath, aspectFilePath, region_name_clean,
             logging.info('no north-facing pixel exceeding threshold slope')
     
     else:
-        print('EPSG codes of used rasters is not the same')#
+        print('EPSG codes of used rasters is not the same')
+
+
+
+#download global wind atlas
+def download_global_wind_atlas(country_code: str, height: int, data_path: str = None):
+    """
+    Downloads wind speed data from the Global Wind Atlas API for a given country and height.
+
+    Parameters:
+        country_code (str): ISO 3166-1 alpha-3 country code (e.g., "AFG" for Afghanistan).
+        height (int): Wind height in meters (e.g., 100).
+        save_path (str, optional): Custom file name or path to save the file. If None, uses default naming.
+    
+    Returns:
+        bool: True if successful, False otherwise.
+    """
+    url = f"https://globalwindatlas.info/api/gis/country/{country_code}/wind-speed/{height}"
+    
+    try:
+        print(f"Downloading data wind data for '{country_code}' from: {url}")
+        response = requests.get(url)
+        if response.ok:
+            filePath = os.path.join(data_path, 'global_solar_wind_atlas', f"{country_code}_wind_speed_{height}.tif")
+            with open(filePath, "wb") as f:
+                f.write(response.content)
+            print(f"Downloaded to: {filePath}")
+            return True
+        else:
+            print(f"Failed to download. HTTP status: {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"Error: {e}")
+        return False

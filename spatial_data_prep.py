@@ -407,6 +407,11 @@ if consider_protected_areas == 'WDPA' or consider_protected_areas == 'file':
         logging.info("No protected areas found in the region. File not saved.")
 
 
+#global wind/solar atlas
+download_global_wind_atlas(country_code=country_code, height=100, data_path=data_path)
+
+
+
 
 print("Done!")
 
