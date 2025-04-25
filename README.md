@@ -1,4 +1,4 @@
-# LAVA - *L*and *A*nalysis and a*VA*ilability
+# LAVA - *LA*nd a*VA*ilability for Renewable Energies
 
 LAVA is a tool to calculate the available area in a user defined study region for building renewable energy generators like utility-scale solar PV and wind onshore.
 First, all needed data is preprocessed to bring it into the right format. This data can be analyzed to get a better understanding of the study region. Finally, the land eligibility analysis is done with [`atlite`](https://github.com/PyPSA/atlite) or [`GLAES`](https://github.com/FZJ-IEK3-VSA/glaes) (GLAES does not work fully yet).
