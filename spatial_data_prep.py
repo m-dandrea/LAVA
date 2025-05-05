@@ -39,7 +39,7 @@ logging.basicConfig(handlers=[
         logging.StreamHandler()
         ], level=logging.INFO) #source: https://stackoverflow.com/questions/13733552/logger-configuration-to-log-to-file-and-print-to-stdout
 
-with open("configs/config.yaml", "r", encoding="utf-8") as f:
+with open("configs/config_Alpes.yaml", "r", encoding="utf-8") as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
 
 #-------data config------- 
@@ -284,7 +284,7 @@ if landcover_source == 'openeo':
     print('processing landcover')
     logging.info('using openeo to get landcover')
 
-    output_path = os.path.join(output_dir, f'landcover_{region_name_clean}_EPSG{EPSG}.tif')
+    output_path = os.path.join(output_dir, f'landcover_openeo_{region_name_clean}_EPSG{EPSG}.tif')
     
     if not os.path.exists(output_path):
         connection = openeo.connect(url="openeo.dataspace.copernicus.eu").authenticate_oidc()
@@ -326,7 +326,7 @@ if landcover_source == 'openeo':
                 colors_dict_int_sorted = dict(sorted(colors_dict_int.items())) #can only write color values as int with rasterio 
                 meta.update({'compress': 'DEFLATE'}) # You can also try 'DEFLATE', 'JPEG', or 'PACKBITS'
                 #save colored version
-                with rasterio.open(os.path.join(output_dir, f'landcover_colored_{region_name}_EPSG{EPSG}.tif'), 'w', **meta) as dst:
+                with rasterio.open(os.path.join(output_dir, f'landcover_openeo_colored_{region_name}_EPSG{EPSG}.tif'), 'w', **meta) as dst:
                     dst.write(band, indexes=1)
                     dst.write_colormap(1, colors_dict_int_sorted) #be aware of dtype: landcover file is saved with int16, so RGB color values also needs to be an integer?
         except Exception as e:
@@ -340,10 +340,15 @@ if landcover_source == 'openeo':
 
 if landcover_source == 'file':
     print('processing landcover')
-    logging.info('using local file to get landcover')
-    clip_reproject_raster(landcoverRasterPath, region_name_clean, region, 'landcover', EPSG, 'nearest', 'int16', output_dir)
-    clipped_landcoverRasterPath = os.path.join(output_dir, f'landcover_{region_name_clean}_EPSG{EPSG}.tif')
-    landcover_information(clipped_landcoverRasterPath, output_dir, region_name, EPSG)
+    local_landcover_filePath = os.path.join(output_dir, f'landcover_local_{region_name_clean}_EPSG{EPSG}.tif')
+    if not os.path.exists(local_landcover_filePath): #process data if file not exists in output folder
+        print('processing landcover')
+        logging.info('using local file to get landcover')
+        clip_reproject_raster(landcoverRasterPath, region_name_clean, region, 'landcover_local', EPSG, 'nearest', 'int16', output_dir)
+        landcover_information(local_landcover_filePath, output_dir, region_name, EPSG)
+    else:
+        print(f"Local landcover already processed to region.")
+
 
 
 print('processing DEM') #block comment: SHIFT+ALT+A, multiple line comment: STRG+#
