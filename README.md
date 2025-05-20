@@ -137,7 +137,7 @@ original from [here](https://tree.nathanfriend.com/?s=(%27opt5s!(%27fancy7~fullP
 LAVA/
 ├── 📁 configs
 │   ├── config_template.yaml
-│   ├── config.yaml
+│   └── config.yaml
 ├── 📁 envs
 ├── 📁 other
 ├── 📁 utils
