@@ -10,7 +10,7 @@ consider_wind_atlas: 1
 consider_solar_atlas: 1
 country_name_solar_atlas: Germany # name of country or "world" if you want to download the whole world 
 
-consider_additional_exclusion_polygons: 0 
+consider_additional_exclusion_polygons: '' #empty string or name of folder within "Raw_Spatial_Data\additional_exclusion_polygons\"
 
 consider_protected_areas: WDPA #WDPA or file or 0
 wdpa_url: 'https://d1gam3xoknrgr2.cloudfront.net/current/WDPA_WDOECM_Mar2025_Public_DEU.zip'
@@ -60,6 +60,9 @@ military_buffer: 0
 coastlines_buffer: 0
 protectedAreas_buffer: 0
 
+#additional exclusion polygons
+additional_exclusion_polygons_buffer: [] #list of buffers in meters in the order of the files in the "additional_exclusion_polygons"-folder in the region data folder
+
 #solar and wind resources
 min_wind_speed: 0
 max_wind_speed: null
@@ -83,6 +86,7 @@ measure: LTAym_YearlyMonthlyTotals
 resolution_landcover: 0
 
 #north facing pixels to be excluded (pixels with slope bigger X and aspect between Y and Z)
+north_facing_pixels: null
 X: 10
 Y: 310
 Z: 50
