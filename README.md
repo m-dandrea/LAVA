@@ -149,7 +149,7 @@ LAVA/
 │   ├── 📁 OSM
 │   └── 📁 protected_areas
 └── 📁 data/
-    └── 📁 ***region_name***/
+    └── 📁 "region_name"/
         ├── *DEM*
         ├── *region_polygon*
         ├── *solar*
