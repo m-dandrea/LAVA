@@ -1,6 +1,8 @@
 #data config 
 landcover_source: 'openeo'   #'file' or 'openeo' or leave empty to not download (DEM data depends on landcover data due to co-registering)
 consider_coastlines: 1
+
+OSM_source: 'geofabrik'
 consider_railways: 1
 consider_roads: 1
 consider_airports: 1
