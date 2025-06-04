@@ -231,7 +231,6 @@ elif config['OSM_source'] == 'overpass':
                 polygon=polygon,
                 feature_key=feature_key,
                 features_dict=selected_osm_features_dict,
-                EPSG=EPSG,
                 # Optional override for geometry types per feature::
                 # relevant_geometries_override={"substation": ["node"]},
                 output_dir=OSM_output_path
