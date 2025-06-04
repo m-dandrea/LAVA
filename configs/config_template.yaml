@@ -126,7 +126,7 @@ osm_features_config:
   military: ["landuse", "military", "way"]
 
 # landcover data
-resolution_landcover: 0
+resolution_landcover: null # in degress, since EPSG4326; 0.008999280057498208 degrees is ca. 1000m at equator
 
 # north facing pixels to be excluded (pixels with slope bigger X and aspect between Y and Z)
 north_facing_pixels: null

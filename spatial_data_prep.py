@@ -308,8 +308,9 @@ if landcover_source == 'openeo':
         # clip landcover directly to area of interest 
         landcover = datacube_landcover.mask_polygon(aoi)
         
-        # reproject landcover to EPSG 32633 and dont change resolution thereby
-        #landcover = masked_landcover.resample_spatial(projection=EPSG, resolution=config['resolution_landcover']) #resolution=0 does not change resolution
+        # change resolution if wanted (projection also possible, see documentation)
+        if config['resolution_landcover']:
+            landcover = landcover.resample_spatial(resolution=config['resolution_landcover']) #resolution=0 does not change resolution
         
         result = landcover.save_result('GTiFF')
         job_options = {
