@@ -82,6 +82,10 @@ military_buffer: null
 coastlines_buffer: 200
 protectedAreas_buffer: null
 
+# EITHER use substations OR transmission (meters)
+substations_inclusion_buffer: null
+transmission_inclusion_buffer: null
+
 #additional exclusion polygons
 additional_exclusion_polygons_buffer: [] #list of buffers in meters in the order of the files in the "additional_exclusion_polygons"-folder in the region data folder
 

@@ -1,201 +1,328 @@
-"""
-This script is used to create the resource grades using the Atlite excluder function.
-It reads the land and infrastructure data prepared in the spatial data preparation script and stores it in the "input data" folder. 
-For each region, it produces several resource grades based on desired criteria.
-The output is a series of raster files stored in the "processed input data" folder.
-"""
-
-"""
-TODO:
-- EPSG is loaded from the file, which one should be used?
-- store the output in the "processed input data" folder
-- read from the folder input data
-- include looping for all regions
-"""
-
-
-
-# Install atlite if not already installed
-
-# Import necessary libraries
 import atlite
 import matplotlib.pyplot as plt
 from scipy.ndimage import label
-import math 
 import numpy as np
 import json 
 import pickle
-import os
-import sys
+import os  
 import geopandas as gpd
 from rasterio.plot import show  
 from atlite.gis import shape_availability
 import rasterio
-from rasterio.transform import Affine
 import yaml
-from utils.data_preprocessing import *
-from unidecode import unidecode
-import atlite
-import atlite
+from utils.data_preprocessing import clean_region_name
 
-# Load configuration file
+dirname = os.getcwd() 
+#main_dir = os.path.join(dirname, '..')
 with open(os.path.join("configs/config.yaml"), "r", encoding="utf-8") as f:
     config = yaml.load(f, Loader=yaml.FullLoader) 
 
-# Clean and prepare region name
-region_name = clean_region_name(config['region_name'])
 
-# Define paths and directories
-dirname = os.getcwd()
-data_path = os.path.join(dirname, 'data', config['region_folder_name']) # this would read from the folder "input data"
+region_name = config['region_name'] #if country is studied, then use country name
+region_name = clean_region_name(region_name)
+print(region_name)
+
+resampled = '' #'_resampled' 
+
+# construct folder paths
+dirname = os.getcwd() 
+data_path = os.path.join(dirname, 'data', config['region_folder_name'])
 data_from_DEM = os.path.join(data_path, 'derived_from_DEM')
 
-# Load EPSG code for the region
-with open(os.path.join(data_path, region_name + '_EPSG.pkl'), 'rb') as file:
-    EPSG = pickle.load(file)
-if config['EPSG_manual']:
-    EPSG = int(config['EPSG_manual'])  # Use custom EPSG if specified
+# Load the CRS
+# geo CRS
+with open(os.path.join(data_path, region_name+'_global_CRS.pkl'), 'rb') as file:
+        global_crs_obj = pickle.load(file)
+# projected CRS
+with open(os.path.join(data_path, region_name+'_local_CRS.pkl'), 'rb') as file:
+        local_crs_obj = pickle.load(file)
 
-# Load region geometry
-regionPath = os.path.join(data_path, f'{region_name}_{EPSG}.geojson')
+print(f'geo CRS: {global_crs_obj}; projected CRS: {local_crs_obj}')
+
+# Extract tag for filename, e.g., 'EPSG3035' or 'ESRI102003'
+auth = global_crs_obj.to_authority()
+global_crs_tag = ''.join(auth) if auth else global_crs_obj.to_string().replace(":", "_")
+auth = local_crs_obj.to_authority()
+local_crs_tag = ''.join(auth) if auth else local_crs_obj.to_string().replace(":", "_")
+
+
+# path to file and check if it exists and save 1 or 0 for later
+landcoverPath=os.path.join(data_path, f'landcover_{config['landcover_source']}_{region_name}_{local_crs_tag}.tif')
+landcover=0 if not os.path.isfile(landcoverPath) and print('no landcover file') is None else 1
+demRasterPath = os.path.join(data_path, f'DEM_{region_name}_{global_crs_tag}{resampled}.tif')
+dem=0 if not os.path.isfile(demRasterPath) and print('no DEM file') is None else 1
+slopeRasterPath = os.path.join(data_from_DEM, f'slope_{region_name}_{global_crs_tag}{resampled}.tif')
+slope=0 if not os.path.isfile(slopeRasterPath) and print('no slope file') is None else 1
+windRasterPath = os.path.join(data_path, f'wind_{region_name}_{global_crs_tag}{resampled}.tif')
+wind=0 if not os.path.isfile(windRasterPath) and print('no wind file') is None else 1
+solarRasterPath = os.path.join(data_path, f'solar_{region_name}_{global_crs_tag}{resampled}.tif')
+solar=0 if not os.path.isfile(solarRasterPath) and print('no solar file') is None else 1
+
+regionPath =os.path.join(data_path, f'{region_name}_{local_crs_tag}.geojson')
 region = gpd.read_file(regionPath)
 
+northfacingRasterPath = os.path.join(data_from_DEM, f'north_facing_{region_name}_{global_crs_tag}{resampled}.tif')
+nfacing=0 if not os.path.isfile(northfacingRasterPath) and print('no north facing pixels file') is None else 1
+coastlinesPath = os.path.join(data_path, f'goas_{region_name}_{global_crs_tag}.gpkg')
+coastlines=0 if not os.path.isfile(coastlinesPath) and print('no coastlines file') is None else 1
+protectedAreasPath = os.path.join(data_path, f'protected_areas_{config['protected_areas_source']}_{region_name}_{global_crs_tag}.gpkg')
+protectedAreas=0 if not os.path.isfile(protectedAreasPath) and print('no protected areas file') is None else 1
+# OSM
+roadsPath = os.path.join(data_path, f'OSM_roads_{region_name}_{global_crs_tag}.gpkg')
+roads=0 if not os.path.isfile(roadsPath) and print('no roads file') is None else 1
+railwaysPath = os.path.join(data_path, f'OSM_railways_{region_name}_{global_crs_tag}.gpkg')
+railways=0 if not os.path.isfile(railwaysPath) and print('no railways file') is None else 1
+airportsPath = os.path.join(data_path, f'OSM_airports_{region_name}_{global_crs_tag}.gpkg')
+airports=0 if not os.path.isfile(airportsPath) and print('no airports file') is None else 1
+waterbodiesPath = os.path.join(data_path, f'OSM_waterbodies_{region_name}_{global_crs_tag}.gpkg')
+waterbodies=0 if not os.path.isfile(waterbodiesPath) and print('no waterbodies file') is None else 1
+militaryPath = os.path.join(data_path, f'OSM_military_{region_name}_{global_crs_tag}.gpkg')
+military=0 if not os.path.isfile(militaryPath) and print('no military file') is None else 1
 
-# Check for required input files and set flags
-landcoverPath = os.path.join(data_path, f'landcover_{region_name}_EPSG{EPSG}.tif')
-landcover = 0 if not os.path.isfile(landcoverPath) else 1
-demRasterPath = os.path.join(data_path, f'DEM_{region_name}_EPSG{EPSG}_resampled.tif')
-dem = 0 if not os.path.isfile(demRasterPath) else 1
-slopeRasterPath = os.path.join(data_from_DEM, f'slope_{region_name}_EPSG{EPSG}_resampled.tif')
-slope = 0 if not os.path.isfile(slopeRasterPath) else 1
-northfacingRasterPath = os.path.join(data_from_DEM, f'north_facing_{region_name}_EPSG{EPSG}_resampled.tif')
-nfacing = 0 if not os.path.isfile(northfacingRasterPath) else 1
+# OSM overpass
+substationsPath = os.path.join(data_path, f'OSM_substations_{region_name}_{global_crs_tag}.gpkg')
+substations=0 if not os.path.isfile(substationsPath) and print('no substations file') is None else 1
+transmissionPath = os.path.join(data_path, f'OSM_transmission_{region_name}_{global_crs_tag}.gpkg')
+transmission=0 if not os.path.isfile(transmissionPath) and print('no transmission file') is None else 1
 
 
-# Load additional input files and set flags
-globalWindPath = os.path.join(data_path, f'wind_{region_name}_EPSG{EPSG}_resampled.tif')
-wind = 0 if not os.path.isfile(globalWindPath) else 1
-globalSolarPath = os.path.join(data_path, f'solar_{region_name}_EPSG{EPSG}_resampled.tif')
-solar = 0 if not os.path.isfile(globalSolarPath) else 1
 
-coastlinesPath = os.path.join(data_path, f'goas_{region_name}_{EPSG}.gpkg')
-coastlines = 0 if not os.path.isfile(coastlinesPath) else 1
-protectedAreasPath = os.path.join(data_path, f'protected_areas_{config['consider_protected_areas']}_{region_name}_{EPSG}.gpkg')
-protectedAreas = 0 if not os.path.isfile(protectedAreasPath) else 1
-roadsPath = os.path.join(data_path, f'OSM_roads_{region_name}_{EPSG}.gpkg')
-roads = 0 if not os.path.isfile(roadsPath) else 1
-railwaysPath = os.path.join(data_path, f'OSM_railways_{region_name}_{EPSG}.gpkg')
-railways = 0 if not os.path.isfile(railwaysPath) else 1
-airportsPath = os.path.join(data_path, f'OSM_airports_{region_name}_{EPSG}.gpkg')
-airports = 0 if not os.path.isfile(airportsPath) else 1
-waterbodiesPath = os.path.join(data_path, f'OSM_waterbodies_{region_name}_{EPSG}.gpkg')
-waterbodies = 0 if not os.path.isfile(waterbodiesPath) else 1
-militaryPath = os.path.join(data_path, f'OSM_military_{region_name}_{EPSG}.gpkg')
-military = 0 if not os.path.isfile(militaryPath) else 1
 
-# Load landcover codes and pixel size
+# additional exclusion polygons
+additional_exclusion_polygons_Path = os.path.join(data_path, 'additional_exclusion_polygons')
+additional_exclusion_polygons=0 if not os.listdir(additional_exclusion_polygons_Path) and print('no additional exclusion polygon files') is None else 1
+
+# load unique land use codes
 with open(os.path.join(data_path, f'landuses_{region_name}.json'), 'r') as fp:
     landuses = json.load(fp)
-if EPSG != 4326:
-    with open(os.path.join(data_path, f'pixel_size_{region_name}_{EPSG}.json'), 'r') as fp:
+
+# load pixel size
+if config['resolution_manual'] is not None:
+    res = config['resolution_manual']
+else:
+    with open(os.path.join(data_path, f'pixel_size_{region_name}_{local_crs_tag}.json'), 'r') as fp:
         res = json.load(fp)
-else:
-    # this resolution is quite high. 0.001 degrees is 100m, using 1km is more reasonable
-    res = 0.0009920634920634887558  # Default resolution for EPSG:4326
+    
+
+print(landuses)
+print(len(landuses))
+print(res)
 
 
-# Set wind threshold based on execution context
-# If running in an IDE or notebook, set a default threshold
-# If running from command line, use the provided argument or default to 7.0
+#perform exclusions
 
-if hasattr(sys, 'ps1') or 'pydevd' in sys.modules:
-    wind_threshold = 6.0  # IDE or notebook mode
-else:
-    wind_threshold = float(sys.argv[1]) if len(sys.argv) > 1 else 7.0
+#raster can be in different CRS than exclusioncontainer, it is co-registered by atlite!
+#vector data needs to be in CRS of exclusioncontainer???
 
 
-# Initialize Atlite ExclusionContainer
-excluder = atlite.ExclusionContainer(crs=EPSG, res=res)
+info_list_exclusion = []
 
-# Add raster-based exclusions
-if landcover:
-    excluder.add_raster(landcoverPath, codes=config['landcover_without_buffer'], crs=EPSG)
-    if config['landcover_with_buffer']:
-        for key, value in config['landcover_with_buffer'].items():
-            excluder.add_raster(landcoverPath, codes=key, buffer=value, crs=EPSG)
-if dem:
-    excluder.add_raster(demRasterPath, codes=range(config['max_elevation'], 10000), crs=EPSG)
-if slope:
-    excluder.add_raster(slopeRasterPath, codes=range(config['max_slope'], 90), crs=EPSG)
-if nfacing:
-    excluder.add_raster(northfacingRasterPath, codes=1, crs=EPSG)
-if wind:
-    # Add wind speed filter
+# initiate Exclusion container
+excluder = atlite.ExclusionContainer(crs=local_crs_obj, res=res)
 
-    def code_filter(mask):
-        return mask  < wind_threshold   #min desired windspeed 
-    excluder.add_raster(globalWindPath, codes=code_filter, invert=False, crs=EPSG)
+# add landcover exclusions
+if config['landcover_without_buffer']:
+    excluder.add_raster(landcoverPath, codes=config['landcover_without_buffer'],crs=local_crs_obj)
+    info_list_exclusion.append(f'landcover codes without buffer which are excluded: {config['landcover_without_buffer']}')
+else: print('landcover without buffer not selected in config.')
+    
+if config['landcover_with_buffer']:   
+    for key, value in config['landcover_with_buffer'].items():
+        excluder.add_raster(landcoverPath, codes=key, buffer=value ,crs=local_crs_obj)
+    info_list_exclusion.append(f'landcover codes with buffer which are excluded: {config['landcover_with_buffer']}')
+else: print('landcover with buffer not selected in config.')
 
-if solar:
-     #excluder.add_raster(globalSolarPath, codes=np.arange(1300, 1800, 0.001).tolist(),invert=False, crs=EPSG)
-    pass
+# add elevation exclusions
+if dem==1 and config['max_elevation'] is not None: 
+    excluder.add_raster(demRasterPath, codes=range(config['max_elevation'],10000), crs=global_crs_obj)
+    info_list_exclusion.append(f'max elevation: {config['max_elevation']}')
+else: print('DEM file not found or not selected in config.')
 
-# Add vector-based exclusions
-if railways:
+# add slope exclusions
+if slope==1 and config['max_slope'] is not None: 
+    excluder.add_raster(slopeRasterPath, codes=range(config['max_slope'],90), crs=global_crs_obj)
+    info_list_exclusion.append(f'max slope: {config['max_slope']}')
+else: print('Slope file not found or not selected in config.')
+
+# add north facing exclusion
+if nfacing==1  and config['north_facing_pixels'] is not None: 
+    excluder.add_raster(northfacingRasterPath, codes=1, crs=global_crs_obj)
+    info_list_exclusion.append(f'north facing pixels')
+else: print('North-facing file not found or not selected in config.')
+
+# add wind exclusions
+def wind_filter(mask):
+    if config['min_wind_speed'] is not None and config['max_wind_speed'] is not None:
+        return (mask < config['min_wind_speed']) | (mask > config['max_wind_speed'])
+    elif config['min_wind_speed'] is not None:
+        return mask < config['min_wind_speed']
+    elif config['max_wind_speed'] is not None:
+        return mask > config['max_wind_speed']
+    
+if wind==1 and (config['min_wind_speed'] is not None or config['max_wind_speed'] is not None): 
+    excluder.add_raster(windRasterPath, codes=wind_filter, crs=global_crs_obj)
+    if config['min_wind_speed'] is not None and config['max_wind_speed'] is not None: info=f'min wind speed: {config['min_wind_speed']}, max wind speed: {config['max_wind_speed']}'
+    elif config['min_wind_speed'] is not None: info=f'min wind speed: {config['min_wind_speed']}'
+    elif config['max_wind_speed'] is not None: info=f'max wind speed: {config['max_wind_speed']}'
+    info_list_exclusion.append(f'{info}')
+else: print('Wind file not found or not selected in config.')
+
+# add solar exclusions
+def solar_filter(mask): #desired yearly, specific solar production (kWh/kW) 
+    if config['min_solar_production'] is not None and config['max_solar_production'] is not None:
+        return (mask < config['min_solar_production']) | (mask > config['max_solar_production'])
+    elif config['min_solar_production'] is not None:
+        return mask < config['min_solar_production']
+    elif config['max_solar_production'] is not None:
+        return mask > config['max_solar_production']
+    
+if solar==1 and (config['min_solar_production'] is not None or config['max_solar_production'] is not None): 
+    excluder.add_raster(solarRasterPath, codes=solar_filter, crs=global_crs_obj)
+    if config['min_solar_production'] is not None and config['max_solar_production'] is not None: info=f'min_solar_production: {config['min_solar_production']}, max_solar_production: {config['max_solar_production']}'
+    elif config['min_solar_production'] is not None: info=f'min_solar_production: {config['min_solar_production']}'
+    elif config['max_solar_production'] is not None: info=f'max_solar_production: {config['max_solar_production']}'
+    info_list_exclusion.append(f'{info}')
+else: print('Solar file not found or not selected in config.')
+
+
+# add exclusions from vector data
+if railways==1 and config['railways_buffer'] is not None: 
     excluder.add_geometry(railwaysPath, buffer=config['railways_buffer'])
-if roads:
+    info_list_exclusion.append(f'railways buffer: {config['railways_buffer']}')
+else: print('Railways file not found or not selected in config.')
+
+if roads==1 and config['roads_buffer'] is not None: 
     excluder.add_geometry(roadsPath, buffer=config['roads_buffer'])
-if airports:
+    info_list_exclusion.append(f'roads buffer: {config['roads_buffer']}')
+else: print('Roads file not found or not selected in config.')
+
+if airports==1 and config['airports_buffer'] is not None: 
     excluder.add_geometry(airportsPath, buffer=config['airports_buffer'])
-if waterbodies:
+    info_list_exclusion.append(f'airports buffer: {config['airports_buffer']}')
+else: print('Airports file not found or not selected in config.')
+
+if waterbodies==1 and config['waterbodies_buffer'] is not None: 
     excluder.add_geometry(waterbodiesPath, buffer=config['waterbodies_buffer'])
-if military:
+    info_list_exclusion.append(f'waterbodies buffer: {config['waterbodies_buffer']}')
+else: print('Waterbodies file not found or not selected in config.')
+
+if military==1 and config['military_buffer'] is not None: 
     excluder.add_geometry(militaryPath, buffer=config['military_buffer'])
-if coastlines:
+    info_list_exclusion.append(f'military buffer: {config['military_buffer']}')
+else: print('Military file not found or not selected in config.')
+
+if coastlines==1 and config['coastlines_buffer'] is not None: 
     excluder.add_geometry(coastlinesPath, buffer=config['coastlines_buffer'])
-if protectedAreas:
+    info_list_exclusion.append(f'coastlines buffer: {config['coastlines_buffer']}')
+else: print('Coastlines file not found or not selected in config.')
+
+if protectedAreas==1 and config['protectedAreas_buffer'] is not None: 
     excluder.add_geometry(protectedAreasPath, buffer=config['protectedAreas_buffer'])
+    info_list_exclusion.append(f'protected areas buffer: {config['railways_buffer']}')
+else: print('Protected Areas file not found or not selected in config.')
 
-# Calculate available areas
+# OSM overpass
+if substations==1 and config['substations_inclusion_buffer'] is not None: 
+    excluder.add_geometry(substationsPath, buffer=config['substations_inclusion_buffer'], invert=True)
+    info_list_exclusion.append(f'substations inclusion buffer: {config['substations_inclusion_buffer']}')
+else: print('Substations file not found or not selected in config.')
+
+if transmission==1 and config['transmission_inclusion_buffer'] is not None: 
+    excluder.add_geometry(transmissionPath, buffer=config['transmission_inclusion_buffer'], invert=True)
+    info_list_exclusion.append(f'transmission inclusion buffer: {config['transmission_inclusion_buffer']}')
+else: print('Transmission file not found or not selected in config.')
+
+
+
+# add additional exclusion polygons
+if additional_exclusion_polygons==1 and config['additional_exclusion_polygons_buffer']:   
+    for i, (buffer_value, filename) in enumerate(zip(config['additional_exclusion_polygons_buffer'], os.listdir(additional_exclusion_polygons_Path))):
+        filepath = os.path.join(additional_exclusion_polygons_Path, filename)    # Construct the full file path
+        excluder.add_geometry(filepath, buffer=buffer_value)
+        info_list_exclusion.append(f'additional exclusion polygon file {i+1}: {buffer_value}')
+else: print('additional exclusion polygon files not found or not selected in config.')
+
+
+
+
+# calculate available areas
 masked, transform = shape_availability(region.geometry, excluder)
+
 eligible_share = masked.sum() * excluder.res**2 / region.geometry.item().area
-print(f"The eligibility share is: {eligible_share:.2%}")
+print()
+eligible_share = f"The eligibility share is: {eligible_share:.2%}"
+print(eligible_share)
 
-# Plot the availability map
-fig, ax = plt.subplots(figsize=(10, 10))
-excluder.plot_shape_availability(region)
+print()
+print('following data was considered during exclusion:')
+for item in info_list_exclusion:
+    print('- ', item)
 
-# Filter areas based on minimum connected pixels
+
+
+# area filter
 def area_filter(boolean_array, min_size):
+    # Label connected components in the array
     labeled_array, num_features = label(boolean_array)
+    
+    # Count the number of pixels in each component
     component_sizes = np.bincount(labeled_array.ravel())
+    
+    # Create a mask for components that meet the size requirement (ignoring the background)
     large_component_mask = np.zeros_like(component_sizes, dtype=bool)
-    large_component_mask[1:] = component_sizes[1:] >= min_size
-    return large_component_mask[labeled_array]
+    large_component_mask[1:] = component_sizes[1:] >= min_size  # Skip the background component (index 0)
+    
+    # Filter the original array, keeping only large components
+    filtered_array = large_component_mask[labeled_array]
+    
+    return filtered_array
+
+
 
 min_pixels_connected = config['min_pixels_connected']
-masked_area_filtered = area_filter(masked, min_size=min_pixels_connected)
+min_pixels_x=config['min_pixels_x']
+min_pixels_y=config['min_pixels_y']
 
+masked_area_filtered = area_filter(masked,min_size=min_pixels_connected)
+#masked_area_filtered = area_filter2(masked,min_x=5, min_y=5)
 
-"""
-the output should be the resource grades in the processed input data folder
-"""
+#array to be used 
+array = masked_area_filtered
 
-# Save the filtered eligible land as a raster file
-array = masked_area_filtered.astype(np.uint8)
+# Convert boolean array to integers (1 for True, 0 for False)
+int_array = array.astype(np.uint8)
+
+# Set 0 (False) to be the nodata value
+nodata_value = 0
+
+#save eligible land array as .tif file
+# Define the metadata for the new file
+# You'll need to adjust these parameters based on your specific data
 metadata = {
     'driver': 'GTiff',
     'dtype': rasterio.uint8,
-    'nodata': 0,
+    'nodata': nodata_value,
     'width': array.shape[1],
     'height': array.shape[0],
     'count': 1,
-    'crs': rasterio.crs.CRS.from_epsg(EPSG),
+    'crs': local_crs_obj,  
     'transform': transform,
-    'compress': 'LZW'
+    'compress': 'LZW' 
 }
-#output_filename = f'available_land_filtered-min{min_pixels_connected}_{region_name}_EPSG{EPSG}.tif'
-output_filename = f'available_land_filtered-min{min_pixels_connected}_thresh{wind_threshold}_{region_name}_EPSG{EPSG}.tif'
-with rasterio.open(os.path.join(data_path, output_filename), 'w', **metadata) as dst:
-    dst.write(array, 1)
 
+# Define output directory
+output_dir = os.path.join(data_path, 'available_land')
+os.makedirs(output_dir, exist_ok=True)
+
+# Write the array to a new .tif file
+if masked_area_filtered in array:
+    with rasterio.open(os.path.join(output_dir, f'{config['scenario']}_available_land_filtered-min{min_pixels_connected}_{region_name}_{local_crs_tag}.tif'), 'w', **metadata) as dst:
+        dst.write(array, 1)
+else:
+    with rasterio.open(os.path.join(output_dir, f'{config['scenario']}_available_land_total_{region_name}_{local_crs_tag}.tif'), 'w', **metadata) as dst:
+        dst.write(array, 1)    
+
+with open(os.path.join(output_dir, f"{config['scenario']}_exclusion_info.txt"), "w") as file:
+    for item in info_list_exclusion:
+        file.write(f"{item}\n")
+    file.write(f"\n{eligible_share}")
