@@ -105,7 +105,8 @@ min_pixels_connected: 0
 min_pixels_x: 5
 min_pixels_y: 5
 
-
+# model areas 
+model_areas_filename:
 
 
 #--advanced details----------------------------------------------------------------------

@@ -11,6 +11,7 @@ from atlite.gis import shape_availability
 import rasterio
 import yaml
 from utils.data_preprocessing import clean_region_name
+from rasterstats import zonal_stats
 
 dirname = os.getcwd() 
 #main_dir = os.path.join(dirname, '..')
@@ -320,14 +321,36 @@ output_dir = os.path.join(data_path, 'available_land')
 os.makedirs(output_dir, exist_ok=True)
 
 # Write the array to a new .tif file
-if masked_area_filtered in array:
-    with rasterio.open(os.path.join(output_dir, f'{config['scenario']}_available_land_filtered-min{min_pixels_connected}_{region_name}_{local_crs_tag}.tif'), 'w', **metadata) as dst:
-        dst.write(array, 1)
-else:
-    with rasterio.open(os.path.join(output_dir, f'{config['scenario']}_available_land_total_{region_name}_{local_crs_tag}.tif'), 'w', **metadata) as dst:
-        dst.write(array, 1)    
+with rasterio.open(os.path.join(output_dir, f'{config['scenario']}_available_land_filtered-min{min_pixels_connected}_{region_name}_{local_crs_tag}.tif'), 'w', **metadata) as dst:
+    dst.write(array, 1)
+ 
 
 with open(os.path.join(output_dir, f"{config['scenario']}_exclusion_info.txt"), "w") as file:
     for item in info_list_exclusion:
         file.write(f"{item}\n")
     file.write(f"\n{eligible_share}")
+
+
+# model area stats
+if config['model_areas_filename']:
+    available_area_raster_filePath = os.path.join(output_dir, f'{config['scenario']}_available_land_filtered-min0_{region_name}_{local_crs_tag}.tif')
+
+    modelAreasPath =os.path.join(dirname, 'Raw_Spatial_Data', 'model_areas', f'{config['model_areas_filename']}')
+    model_areas = gpd.read_file(modelAreasPath)
+    model_areas.to_crs(local_crs_obj, inplace=True)
+    
+    stats = zonal_stats(model_areas,
+                    available_area_raster_filePath,
+                    stats=['sum'])
+    
+    model_areas['pixel_count'] = [list(d.values())[0] for d in stats]
+    model_areas['available_area_m2'] = model_areas['pixel_count'] * excluder.res**2
+    model_areas['available_area_km2'] = model_areas['pixel_count'] *1e-6
+    model_areas['power_potential_MW'] = (model_areas['available_area_m2']*1e-6) * config['deployment_density']
+
+    # create summary table
+    first_column = model_areas.columns[0]
+    columns = [first_column, "pixel_count", "available_area_m2", "available_area_km2", "power_potential_MW"]
+    subset = model_areas[columns]
+    print('\npotentials in model areas:')
+    print(subset.to_string(index=False))
