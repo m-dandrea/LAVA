@@ -325,11 +325,6 @@ with rasterio.open(os.path.join(output_dir, f'{config['scenario']}_available_lan
     dst.write(array, 1)
  
 
-with open(os.path.join(output_dir, f"{config['scenario']}_exclusion_info.txt"), "w") as file:
-    for item in info_list_exclusion:
-        file.write(f"{item}\n")
-    file.write(f"\n{eligible_share}")
-
 
 # model area stats
 if config['model_areas_filename']:
@@ -354,3 +349,17 @@ if config['model_areas_filename']:
     subset = model_areas[columns]
     print('\npotentials in model areas:')
     print(subset.to_string(index=False))
+
+
+# save info in textfile
+with open(os.path.join(output_dir, f"{config['scenario']}_exclusion_info.txt"), "w") as file:
+    for item in info_list_exclusion:
+        file.write(f"{item}\n")
+    file.write(f"\neligibility share: {eligible_share:.2%}")
+    file.write(f"\navailable area: {available_area:.2} m2")
+    file.write(f"\npower potential: {power_potential:.2} MW")
+
+    if config['model_areas_filename']:
+        # Write table from GeoDataFrame subset
+        file.write("\n\nResults for model areas:\n")
+        file.write(subset.to_string(index=False))
