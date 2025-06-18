@@ -48,29 +48,32 @@ def generate_distance_raster(shapefile_path, region_path, output_path, pixel_siz
             output=temp_raster_path
         )
 
+    print("Clipping raster to region...")
+    with rasterio.open(temp_raster_path) as src:
+        clipped_array, clipped_transform = mask(src, region_geometries, crop=True)
+        out_meta = src.meta.copy()
+
+    out_meta.update({
+        "height": clipped_array.shape[1],
+        "width": clipped_array.shape[2],
+        "transform": clipped_transform,
+        "nodata": no_data_value
+    })
+
     print("Calculating distance raster...")
     dr_obj = dr.DistanceRaster(
-        rv_array,
-        affine=affine,
+        clipped_array[0],
+        affine=clipped_transform,
         output_path=output_path,
         conditional=raster_conditional
     )
 
-    print("Clipping raster to region...")
+    print("Saving distance raster...")
     with rasterio.open(output_path) as src:
-        out_image, out_transform = mask(src, region_geometries, crop=True)
-        out_meta = src.meta.copy()
+        dist_data = src.read()
 
-    out_meta.update({
-        "height": out_image.shape[1],
-        "width": out_image.shape[2],
-        "transform": out_transform,
-        "nodata": src.nodata
-    })
-
-    print("Saving clipped raster...")
     with rasterio.open(output_path, 'w', **out_meta) as dest:
-        dest.write(out_image)
+        dest.write(dist_data)
 
     print("Distance raster generation complete.")
 
