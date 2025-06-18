@@ -131,15 +131,16 @@ fclass:
 # OVERPASS API: OSM features to fetch
 # the name before "_" should match the binary filtering above. 
 # all OSM keys with its values: https://wiki.openstreetmap.org/wiki/Map_features
-railways: &railways ['rail']
-roads: &roads ['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'unclassified', 'motorway_link', 'trunk_link', 'primary_link', 'secondary_link', 'tertiary_link']
-airports: &airports ['aerodrome']
-waterbodies: &waterbodies ['water']
-military: &military ['military']
-substations: &substations ['substation']
-plants: &plants ['plant']
-transmission_lines: &transmission_lines ['line']
-generators: &generators ['generator']
+overpass_features:
+  railways: &railways ['rail']
+  roads: &roads ['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'unclassified', 'motorway_link', 'trunk_link', 'primary_link', 'secondary_link', 'tertiary_link']
+  airports: &airports ['aerodrome']
+  waterbodies: &waterbodies ['water']
+  military: &military ['military']
+  substations: &substations ['substation']
+  plants: &plants ['plant']
+  transmission_lines: &transmission_lines ['line']
+  generators: &generators ['generator']
 # don't change following lines
 osm_features_config:
   substations: ["power", *substations, "way"]
