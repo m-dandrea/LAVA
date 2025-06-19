@@ -1,16 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-created August 2024
-
 @author: Jonas Meier
 
-
-This script prepares raw spatial data for land exclusion in GLAES or ATLITE.
-The raw inputs should be downloaded to /Raw_Spatial_Data before execution. For landcover the openEO API can be used to download data automatically.
-The outputs are saved in /data.
-
-compare boundaries between different data sources: https://www.geoboundaries.org/visualize.html?country=DEU&mainSource=OSM-Boundaries&comparisonSource=geoBoundaries+%28Open%29&mainLevel=2&comparisonLevel=2
-This script uses administrative boundries from GADM.org via pygadm
+TBA
 """
 
 import time
@@ -121,6 +113,11 @@ else:
     region.set_crs('epsg:4326', inplace=True) #pygadm lib extracts information from the GADM dataset as GeoPandas GeoDataFrame. GADM.org provides files in coordinate reference system is longitude/latitude and the WGS84 datum.
     logging.info('using admin area within country as study area')
 
+# simplify polygon of study area (openeo can only handle polygons up to a certain size)
+try:
+    region["geometry"] = region["geometry"].simplify(config["study_area"]["tolerance"], preserve_topology=True)
+except Exception as e:
+    logging.warning(f"Polygon of study could not be simplified: {e}")
 region.to_file(os.path.join(output_dir, f'{region_name_clean}_EPSG4326.geojson'), driver='GeoJSON', encoding='utf-8')
 
 

@@ -24,7 +24,7 @@ solar_atlas: 1
 country_name_solar_atlas: Germany # name of country or "world" if you want to download the whole world 
 
 # additional polygons and rasters
-additional_exclusion_polygons_folder_name:   
+additional_exclusion_polygons_folder_name: 
 additional_exclusion_rasters_folder_name: 
 
 # protected areas
@@ -89,7 +89,7 @@ protectedAreas_buffer: null
 additional_exclusion_polygons_buffer: [] #list of buffers in meters in the order of the files in the "additional_exclusion_polygons"-folder in the region data folder
 
 # solar and wind resources
-min_wind_speed: 7
+min_wind_speed: null
 max_wind_speed: null
 
 min_solar_production: null
@@ -115,7 +115,11 @@ measure: LTAym_YearlyMonthlyTotals
 
 force_osm_download: 1 #if set to 1, OSM data will be downloaded even if it is already present in the folder
 
-# shape simplification for OSM
+# simplification tolerance for study area
+study_area:
+  tolerance: 0.0005
+
+# shape simplification for overpass
 target_vertices:  360
 tolerance_min: 0.0  # Minimum simplification tolerance
 tolerance_max: 0.5  # Maximum simplification tolerance, 

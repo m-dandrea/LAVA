@@ -28,7 +28,9 @@ resampled = '' #'_resampled'
 # construct folder paths
 dirname = os.getcwd() 
 data_path = os.path.join(dirname, 'data', config['region_folder_name'])
+data_path_OSM = os.path.join(dirname, 'data', config['region_folder_name'], 'OSM_Infrastructure')
 data_from_DEM = os.path.join(data_path, 'derived_from_DEM')
+OSM_source = config['OSM_source']
 
 # Load the CRS
 # geo CRS
@@ -69,21 +71,21 @@ coastlines=0 if not os.path.isfile(coastlinesPath) and print('no coastlines file
 protectedAreasPath = os.path.join(data_path, f'protected_areas_{config['protected_areas_source']}_{region_name}_{global_crs_tag}.gpkg')
 protectedAreas=0 if not os.path.isfile(protectedAreasPath) and print('no protected areas file') is None else 1
 # OSM
-roadsPath = os.path.join(data_path, f'OSM_roads_{region_name}_{global_crs_tag}.gpkg')
+roadsPath = os.path.join(data_path_OSM, f'{OSM_source}_roads_{region_name}_{global_crs_tag}.gpkg')
 roads=0 if not os.path.isfile(roadsPath) and print('no roads file') is None else 1
-railwaysPath = os.path.join(data_path, f'OSM_railways_{region_name}_{global_crs_tag}.gpkg')
+railwaysPath = os.path.join(data_path_OSM, f'{OSM_source}_railways_{region_name}_{global_crs_tag}.gpkg')
 railways=0 if not os.path.isfile(railwaysPath) and print('no railways file') is None else 1
-airportsPath = os.path.join(data_path, f'OSM_airports_{region_name}_{global_crs_tag}.gpkg')
+airportsPath = os.path.join(data_path_OSM, f'{OSM_source}_airports_{region_name}_{global_crs_tag}.gpkg')
 airports=0 if not os.path.isfile(airportsPath) and print('no airports file') is None else 1
-waterbodiesPath = os.path.join(data_path, f'OSM_waterbodies_{region_name}_{global_crs_tag}.gpkg')
+waterbodiesPath = os.path.join(data_path_OSM, f'{OSM_source}_waterbodies_{region_name}_{global_crs_tag}.gpkg')
 waterbodies=0 if not os.path.isfile(waterbodiesPath) and print('no waterbodies file') is None else 1
-militaryPath = os.path.join(data_path, f'OSM_military_{region_name}_{global_crs_tag}.gpkg')
+militaryPath = os.path.join(data_path_OSM, f'{OSM_source}_military_{region_name}_{global_crs_tag}.gpkg')
 military=0 if not os.path.isfile(militaryPath) and print('no military file') is None else 1
 
 # OSM overpass
-substationsPath = os.path.join(data_path, f'OSM_substations_{region_name}_{global_crs_tag}.gpkg')
+substationsPath = os.path.join(data_path_OSM, f'{OSM_source}_substations_{region_name}_{global_crs_tag}.gpkg')
 substations=0 if not os.path.isfile(substationsPath) and print('no substations file') is None else 1
-transmissionPath = os.path.join(data_path, f'OSM_transmission_{region_name}_{global_crs_tag}.gpkg')
+transmissionPath = os.path.join(data_path_OSM, f'{OSM_source}_transmission_lines_{region_name}_{global_crs_tag}.gpkg')
 transmission=0 if not os.path.isfile(transmissionPath) and print('no transmission file') is None else 1
 
 
@@ -222,7 +224,12 @@ if protectedAreas==1 and config['protectedAreas_buffer'] is not None:
     info_list_exclusion.append(f'protected areas buffer: {config['railways_buffer']}')
 else: print('Protected Areas file not found or not selected in config.')
 
-# OSM overpass
+if transmission==1 and config['transmission_inclusion_buffer'] is not None: 
+    excluder.add_geometry(transmissionPath, buffer=config['transmission_buffer'])
+    info_list_exclusion.append(f'transmission buffer: {config['transmission_buffer']}')
+else: print('Transmission file not found or not selected in config.')
+
+# INCLUSION
 if substations==1 and config['substations_inclusion_buffer'] is not None: 
     excluder.add_geometry(substationsPath, buffer=config['substations_inclusion_buffer'], invert=True)
     info_list_exclusion.append(f'substations inclusion buffer: {config['substations_inclusion_buffer']}')
@@ -251,13 +258,15 @@ masked, transform = shape_availability(region.geometry, excluder)
 
 available_area = masked.sum() * excluder.res**2
 eligible_share = available_area / region.geometry.item().area
-power_potential = available_area*1e-6 * config['deployment_density']
+
 print()
 print(f"The eligibility share is: {eligible_share:.2%}")
 print()
 print(f'The available area is: {available_area:.2}')
 print()
-print(f'Power potential: {power_potential:.2} MW')
+if config['deployment_density']:
+    power_potential = available_area*1e-6 * config['deployment_density']
+    print(f'Power potential: {power_potential:.2} MW')
 
 print()
 print('following data was considered during exclusion:')
@@ -341,7 +350,8 @@ if config['model_areas_filename']:
     model_areas['pixel_count'] = [list(d.values())[0] for d in stats]
     model_areas['available_area_m2'] = model_areas['pixel_count'] * excluder.res**2
     model_areas['available_area_km2'] = model_areas['pixel_count'] *1e-6
-    model_areas['power_potential_MW'] = (model_areas['available_area_m2']*1e-6) * config['deployment_density']
+    if config['deployment_density']:
+        model_areas['power_potential_MW'] = (model_areas['available_area_m2']*1e-6) * config['deployment_density']
 
     # create summary table
     first_column = model_areas.columns[0]
