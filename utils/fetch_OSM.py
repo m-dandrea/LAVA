@@ -138,7 +138,7 @@ def osm_to_gpkg(
             continue
         gdf = gpd.GeoDataFrame(features, crs=f"EPSG:{EPSG}")
         gpkg_path = os.path.join(
-            output_dir, f"{feature_key}.gpkg"
+            output_dir, f"overpass_{feature_key}.gpkg"
         )
         gdf.to_file(gpkg_path, driver="GPKG")
         print(f"  ✔ Saved {len(gdf)} {geom_type}(s) to {rel_path(gpkg_path)}")

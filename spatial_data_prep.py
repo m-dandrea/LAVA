@@ -36,7 +36,6 @@ with open("configs/config.yaml", "r", encoding="utf-8") as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
 
 #-------data config------- 
-landcover_source = config['landcover_source']
 consider_coastlines = config['coastlines']
 consider_railways = config['railways']
 consider_roads = config['roads']
@@ -59,14 +58,13 @@ wdpa_url = config['wdpa_url']
 region_folder_name = config['region_folder_name']
 OSM_folder_name = config['OSM_folder_name'] #usually same as country_code, only needed if OSM is to be considered
 DEM_filename = config['DEM_filename']
-landcover_filename = config['landcover_filename']
 
 #use GADM boundary
 region_name = config['region_name'] #if country is studied, then use country name
 country_code = config['country_code']  #3-digit ISO code  #PRT  #Städteregion Aachen in level 2 #Porto in level 1 #Elbe-Elster in level 2 #Zell am See in level 2
 gadm_level = config['gadm_level']
 #or use custom region
-custom_study_area_filename = config['custom_study_area_filename'] #if None use empty string           'Aceh_single.geojson'
+custom_study_area_filename = config.get('custom_study_area_filename', None)        
 ##################################################
 #north facing pixels
 X = config['X']
@@ -80,10 +78,6 @@ start_time = time.time()
 # Get paths to data files or folders
 dirname = os.path.dirname(__file__)
 data_path = os.path.join(dirname, 'Raw_Spatial_Data')
-if landcover_source == 'file' and landcover_filename is not None:
-    landcoverRasterPath = os.path.join(data_path, 'landcover', landcover_filename)
-else:
-    print('No landcover raster file provided. Using openEO to get landcover data or provide file.')
 demRasterPath = os.path.join(data_path, 'DEM', DEM_filename)
 coastlinesFilePath = os.path.join(data_path, 'GOAS', 'goas.gpkg')
 protected_areas_folder = os.path.join(data_path, 'protected_areas')
@@ -199,7 +193,6 @@ region.to_crs(global_crs_obj, inplace=True)
 # OSM data
 if config['OSM_source'] == 'geofabrik':
     OSM_output_dir = os.path.join(output_dir, 'OSM_Infrastructure')
-    print(OSM_output_dir)
     os.makedirs(OSM_output_dir, exist_ok=True) 
 
     process_all_local_osm_layer(config, region, region_name_clean, OSM_output_dir, OSM_data_path, target_crs=None)
@@ -222,15 +215,15 @@ elif config['OSM_source'] == 'overpass':
         if config.get(f"{key}", 0)}
     
     # Define output base directory and prepare unsupported log
-    OSM_output_path = os.path.join(output_dir, "OSM_Infrastructure")
+    OSM_output_dir = os.path.join(output_dir, "OSM_Infrastructure")
     unsupported_summary = {}
-    unsupported_geometries_summary_path = os.path.join(OSM_output_path, "unsupported_geometries_summary.json")
+    unsupported_geometries_summary_path = os.path.join(OSM_output_dir, "unsupported_geometries_summary.json")
 
     # Loop through regions and features
     for feature_key in selected_osm_features_dict:
 
         # skip if we’ve already got this GeoPackage
-        gpkg_path = os.path.join(OSM_output_path, f"overpass_{feature_key}.gpkg")
+        gpkg_path = os.path.join(OSM_output_dir, f"overpass_{feature_key}.gpkg")
 
         if os.path.exists(gpkg_path) and not config['force_osm_download']:
             print(f"⏭️  Skipping '{feature_key}' for {region_name_clean}: '{rel_path(gpkg_path)}' already exists.")
@@ -245,7 +238,7 @@ elif config['OSM_source'] == 'overpass':
                 features_dict=selected_osm_features_dict,
                 # Optional override for geometry types per feature::
                 # relevant_geometries_override={"substation": ["node"]},
-                output_dir=OSM_output_path
+                output_dir=OSM_output_dir
             )
 
             # Save unsupported counts if any were found
@@ -260,12 +253,12 @@ elif config['OSM_source'] == 'overpass':
         with open(unsupported_geometries_summary_path, "w", encoding="utf-8") as f:
             json.dump(unsupported_summary, f, indent=2, ensure_ascii=False)
 
-    print(f"\nUnsupported geometry summary saved to {rel_path(OSM_output_path)}")
+    print(f"\nUnsupported geometry summary saved to {rel_path(OSM_output_dir)}")
 
 # create proximity raster for substations if data exists and calculation is enabled
 if compute_substation_proximity:
     print('/n computing proximity raster for substations')
-    substations_path = os.path.join(OSM_output_path, "substations.gpkg")
+    substations_path = os.path.join(OSM_output_dir, "substations.gpkg")
     if os.path.exists(substations_path):
         substations_gdf = gpd.read_file(substations_path)
         if not substations_gdf.empty:
@@ -288,7 +281,7 @@ if compute_substation_proximity:
 # create proximity raster for roads if data exists and calculation is enabled
 if compute_road_proximity:
     print('/n computing proximity raster for roads')
-    roads_path = os.path.join(OSM_output_path, "roads.gpkg")
+    roads_path = os.path.join(OSM_output_dir, "roads.gpkg")
     if os.path.exists(roads_path):
         roads_gdf = gpd.read_file(roads_path)
         if not roads_gdf.empty:
@@ -345,7 +338,7 @@ if consider_additional_exclusion_rasters:
 
 
 
-if landcover_source == 'openeo':
+if config['landcover_source'] == 'openeo':
     print('processing landcover')
     logging.info('using openeo to get landcover')
 
@@ -415,8 +408,11 @@ if landcover_source == 'openeo':
 
     processed_landcover_filePath = openeo_landcover_filePath
 
-if landcover_source == 'file':
+if config['landcover_source'] == 'file':
     print('processing landcover')
+    landcover_filename = config['landcover_filename']
+    landcoverRasterPath = os.path.join(data_path, 'landcover', landcover_filename)
+
     local_landcover_filePath = os.path.join(output_dir, f'landcover_local_{region_name_clean}_{global_crs_tag}.tif')
     if not os.path.exists(local_landcover_filePath): #process data if file not exists in output folder
         print('processing landcover')
