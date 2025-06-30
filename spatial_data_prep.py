@@ -168,10 +168,10 @@ logging.info(f"Bounding box in EPSG 4326: \nminx: {bounding_box[0]}, miny: {boun
 
 #clip global oceans and seas file to study region for coastlines
 if consider_coastlines == 1:
+    print('\nprocessing coastlines')
     goas_region_filePath = os.path.join(output_dir, f'goas_{region_name_clean}_{global_crs_tag}.gpkg')
     if not os.path.exists(goas_region_filePath): #process data if file not exists in output folder
         try:
-            print('processing coastlines')
             coastlines = gpd.read_file(coastlinesFilePath)
             coastlines_region = coastlines.clip(bounding_box)
             if not coastlines_region.empty:
@@ -199,7 +199,7 @@ if config['OSM_source'] == 'geofabrik':
 
 elif config['OSM_source'] == 'overpass':
 
-    print('processing OSM data')
+    print('\nprocessing OSM data')
 
     # Define OSM features to fetch
     # Load all possible OSM features directly from config
@@ -257,8 +257,9 @@ elif config['OSM_source'] == 'overpass':
 
 # create proximity raster for substations if data exists and calculation is enabled
 if compute_substation_proximity:
-    print('/n computing proximity raster for substations')
-    substations_path = os.path.join(OSM_output_dir, "substations.gpkg")
+    print('\ncomputing proximity distance for substations')
+    substation_filename = config['OSM_source'] + "_substations.gpkg" #OSM substations are saved in a file with the name of the OSM source
+    substations_path = os.path.join(OSM_output_dir, substation_filename)
     if os.path.exists(substations_path):
         substations_gdf = gpd.read_file(substations_path)
         if not substations_gdf.empty:
@@ -280,10 +281,11 @@ if compute_substation_proximity:
 
 # create proximity raster for roads if data exists and calculation is enabled
 if compute_road_proximity:
-    print('/n computing proximity raster for roads')
-    roads_path = os.path.join(OSM_output_dir, "roads.gpkg")
+    print('\ncomputing proximity distance for roads')
+    roads_filename=  config['OSM_source'] + "_roads.gpkg" #OSM roads are saved in a file with the name of the OSM source
+    roads_path = os.path.join(OSM_output_dir, roads_filename)
     if os.path.exists(roads_path):
-        roads_gdf = gpd.read_file(roads_path)
+        roads_gdf = gpd.read_file(roads_path) 
         if not roads_gdf.empty:
             proximity_dir = os.path.join(output_dir, "proximity")
             os.makedirs(proximity_dir, exist_ok=True)
@@ -303,7 +305,7 @@ if compute_road_proximity:
 
 #clip and reproject additional exclusion polygons
 if consider_additional_exclusion_polygons:
-    print('processing additional exclusion polygons')
+    print('\nprocessing additional exclusion polygons')
     # Define output directory for additional exclusion polygons
     add_excl_polygons_dir = os.path.join(output_dir,'additional_exclusion_polygons')
     os.makedirs(add_excl_polygons_dir, exist_ok=True)
@@ -323,7 +325,7 @@ if consider_additional_exclusion_polygons:
 
 #clip and reproject additional rasters
 if consider_additional_exclusion_rasters:
-    print('processing additional exclusion rasters')
+    print('\nprocessing additional exclusion rasters')
     add_excl_rasters_dir = os.path.join(output_dir,'additional_exclusion_rasters') 
     os.makedirs(add_excl_rasters_dir, exist_ok=True) # Define output directory for additional exclusion rasters
     source_dir = os.path.join(data_path, 'additional_exclusion_rasters', config['additional_exclusion_rasters_folder_name'])
@@ -339,7 +341,7 @@ if consider_additional_exclusion_rasters:
 
 
 if config['landcover_source'] == 'openeo':
-    print('processing landcover')
+    print('\nprocessing landcover')
     logging.info('using openeo to get landcover')
 
     openeo_landcover_filePath = os.path.join(output_dir, f'landcover_openeo_{region_name_clean}_{global_crs_tag}.tif')
@@ -467,12 +469,11 @@ try:
 
     #------------- Terrain Ruggedness Index -----------------
     if compute_terrain_ruggedness:
-        
-        tri_FilePath = os.path.join(richdem_helper_dir, f'TerrainRuggednessIndex_{region_name_clean}_EPSG{EPSG}.tif')
+        print('\nprocessing Terrain Ruggedness Index')
+        tri_FilePath = os.path.join(output_dir, f'TerrainRuggednessIndex_{region_name_clean}_EPSG{EPSG}.tif')
         if os.path.exists(tri_FilePath):
             print(f"Terrain Ruggedness Index already exists at {rel_path(tri_FilePath)}. Skipping calculation.")
         else:
-            print('\n processing Terrain Ruggedness Index')
             dem = xdem.DEM(dem_localCRS_Path)
             tri = dem.terrain_ruggedness_index(window_size=9)
             tri_array = tri.data
@@ -492,11 +493,10 @@ except Exception as e:
 #protected areas
 #download WDPA (WDPA is country specific, so the protected areas for a custom polygon spanning over multiple countries cannot be obtained)
 if consider_protected_areas == 'WDPA' or consider_protected_areas == 'file':
-
+    print('\nprocessing protected areas')
     protected_areas_filePath = os.path.join(output_dir, f'protected_areas_{consider_protected_areas}_{region_name_clean}_{global_crs_tag}.gpkg')
     if not os.path.exists(protected_areas_filePath): #process data if file not exists in output folder
 
-        print('processing protected areas')
         if consider_protected_areas == 'WDPA':    
             logging.info('using WDPA')
             if find_folder(protected_areas_folder, string_in_name=country_code) is None:
@@ -535,10 +535,10 @@ if consider_protected_areas == 'WDPA' or consider_protected_areas == 'file':
 
 #global wind atlas
 if consider_wind_atlas == 1:
+    print('\nprocessing global wind atlas')
     wind_raster_filePath = os.path.join(wind_solar_atlas_folder, f'{country_code}_wind_speed_100.tif')
 
     if not os.path.exists(wind_raster_filePath):
-        print('processing global wind atlas')
         download_global_wind_atlas(country_code=country_code, height=100, data_path=data_path) #global wind atlas apparently uses 3 letter ISO code
     else:
         print(f"Global wind atlas data already downloaded: {rel_path(wind_raster_filePath)}")
@@ -554,11 +554,11 @@ if consider_wind_atlas == 1:
 
 #global solar atlas (no check whether file already exists)
 if consider_solar_atlas == 1:
+    print('\nprocessing global solar atlas')
     country_name_solar_atlas = config['country_name_solar_atlas']
     solar_atlas_folder_path = os.path.join(wind_solar_atlas_folder, f'{country_name_solar_atlas}_solar_atlas')
 
     if not os.path.exists(solar_atlas_folder_path):
-        print('processing global solar atlas')
         solar_atlas_measure = config['measure']  
         solar_atlas_folder_name = download_global_solar_atlas(country_name=country_name_solar_atlas, data_path=data_path, measure = solar_atlas_measure)
     else:
@@ -574,7 +574,7 @@ if consider_solar_atlas == 1:
 
 
 
-print("Done!")
+print("\nDone!")
 
 elapsed = time.time() - start_time
 logging.info(f'elapsed seconds: {round(elapsed)}')
