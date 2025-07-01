@@ -16,6 +16,8 @@ import pickle
 
 #-----------------------------------Snakemake input to be implemented-----------------------------------#
 weather_year = 2010
+# region
+# pontential_path
 
 
 #------------------------------------------- Load configuration

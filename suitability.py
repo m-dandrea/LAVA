@@ -213,18 +213,8 @@ for sg, wg in SG_WG_comb:
         df_tier_potentials.loc[f"{region_name}_{sg}_{wg}", t] = np.sum(tier_area) * pixel_area_km2
 
 
-# Export results to CSV
+# Export potentials to CSV
 df_tier_potentials.to_csv(f'{region_name}_tier_potentials.csv')
 
 
-plt.figure(figsize=(10, 6))
-plt.imshow(solar_avail_reproj, cmap='viridis')
-#plt.imshow(inclusion_area, cmap='viridis')
-#plt.imshow(solar_maps['SG3'], cmap='viridis')
-#plt.imshow(wind_maps['WG3'], cmap='viridis')
-plt.colorbar(label='Overlap Value')
-plt.xlabel('Longitude')
-plt.ylabel('Latitude')
-plt.show()
-
-
+# To do: Exporting the overlap/diff rasters as well as a json with the relevant areas
