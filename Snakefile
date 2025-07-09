@@ -22,7 +22,7 @@ rule exclusion:
         region=lambda wc: wc.region,
         tech=lambda wc: wc.tech
     script:
-        "exclusion.py"
+        "Exclusion.py"
 
 rule suitability:
     input:
