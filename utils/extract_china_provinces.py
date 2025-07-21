@@ -1,13 +1,14 @@
 
 import geopandas as gpd
 import os
-
+import json
 
 
 def save_level_1_areas_to_folder(json_path: str, gadm_level: int, output_folder: str):
     """
     Reads a GeoJSON file, extracts all areas at the specified GADM level,
     and saves each area as a separate GeoJSON file in the output folder.
+    Also saves a list of area names to a JSON file in the output folder.
 
     Parameters:
         json_path (str): Path to the GeoJSON file.
@@ -18,13 +19,19 @@ def save_level_1_areas_to_folder(json_path: str, gadm_level: int, output_folder:
     gadm_data = gpd.read_file(json_path)
     name_col = f'NAME_{gadm_level}'
     gdf = gadm_data.loc[gadm_data[name_col].notnull()].copy()
+    provinces_list= []
     for name, group in gdf.groupby(name_col):
         # Clean filename
         safe_name = "".join([c if c.isalnum() or c in " _-" else "_" for c in str(name)])
         out_path = os.path.join(output_folder, f"gadm41_CHN_1_{safe_name}.geojson")
         group.to_file(out_path, driver="GeoJSON")
+        provinces_list.append(safe_name)
+        list_out = os.path.join(output_folder, "provinces_list.json")
+        with open(list_out, "w", encoding="utf-8") as f:
+            json.dump(provinces_list, f, ensure_ascii=False, indent=2)
 
 # Example usage:
 json_path= "Raw_Spatial_Data/custom_study_area/gadm41_CHN_1.json"
-save_level_1_areas_to_folder(json_path, 1, "Raw_Spatial_Data\custom_study_area")
+save_level_1_areas_to_folder(json_path, 1, "Raw_Spatial_Data/custom_study_area")
+
 

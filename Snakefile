@@ -1,6 +1,11 @@
 from pathlib import Path
+import json
 
-regions = ["NeiMongol"]
+regions_filepath = Path("Raw_Spatial_Data/custom_study_area/China_provinces_list.json")
+with open(regions_filepath, "r") as f:
+    regions= json.load(f)
+
+regions = ["Gansu"]
 technologies = ["solar", "wind"]
 
 def logpath(region, filename):
@@ -28,9 +33,11 @@ rule exclusion:
         logpath("{region}", "spatial_data_prep.done")
     output:
         touch(logpath("{region}", "exclusion_{technology}.done"))
-    params:
-        region=lambda wc: wc.region,
-        technology=lambda wc: wc.technology
+    shell:
+        '''
+        python Exclusion.py {wildcards.region} {wildcards.technology}
+        touch {output}
+        '''
     script:
         "Exclusion.py"
 
