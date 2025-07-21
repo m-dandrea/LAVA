@@ -1,11 +1,10 @@
 from pathlib import Path
 
-regions = ["NeiMongol"]
+regions = ["Gansu"]
 technologies = ["solar", "wind"]
 
 def logpath(region, filename):
     return Path("data") / region / "snakemake_log" / filename
-
 
 for region in regions:
     Path(f"data/{region}/snakemake_log").mkdir(parents=True, exist_ok=True)

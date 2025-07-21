@@ -25,10 +25,10 @@ with open(config_file, "r", encoding="utf-8") as f:
 region_name = config['region_name'] #if country is studied, then use country name
 region_name = clean_region_name(region_name)
 region_folder_name = config['region_folder_name'] #folder name for the region, e.g., 'China' or 'Germany'
-
 technology = config.get('technology') #technology, e.g., 'wind' or 'solar'
 scenario= config.get('scenario') #scenario, e.g., 'ref' or 'high'
 print(region_name, scenario, technology)
+
 
 # override values via command line arguments
 parser = argparse.ArgumentParser()
@@ -37,15 +37,13 @@ parser.add_argument("--technology", help="technology type")
 parser.add_argument("--scenario", help="scenario name")
 args = parser.parse_args()
 
-if args.region:
-    region_folder_name = args.region
-    region_name = args.region
-if args.technology:
-    technology = args.technology
-if args.scenario:
-    scenario = args.scenario
-else:
-    print("Using values from config.")
+# Override values if provided in command line arguments wiht snakemake
+region_name = getattr(args, "region", region_name)
+region_folder_name = getattr(args, "region", region_folder_name)
+technology = getattr(args, "technology", technology)
+scenario = getattr(args, "scenario", scenario)
+
+print(f"Using command line arguments: region={region_name}, technology={technology}, scenario={scenario}")
 
 
 #load the technology specific configuration file
