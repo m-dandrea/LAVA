@@ -65,6 +65,7 @@ custom_study_area_filename: 'gadm41_CHN_1_NeiMongol.geojson' #if None use empty 
 #--exclusions----------------------------------------------------------------------
 # scenario name (written in available area filename)
 scenario: 'ref'
+technology: 'onshorewind' # or 'solar', used for the filename of the available area
 
 # deployment density
 deployment_density: 50 # MW/km²
@@ -91,6 +92,7 @@ waterbodies_buffer: 20
 military_buffer: null
 coastlines_buffer: 200
 protectedAreas_buffer: null
+transmission_lines_buffer: null
 
 # additional exclusion polygons
 additional_exclusion_polygons_buffer: [] #list of buffers in meters in the order of the files in the "additional_exclusion_polygons"-folder in the region data folder
@@ -177,3 +179,47 @@ Z: 50
 # world database of protected areas
 wdpa_consider_status: ["Adopted", "Designated", "Established", "Inscribed"] #all possibilies: "Adopted", "Designated", "Established", "Inscribed", "Proposed"
 
+
+#--Weather and energy data assumptions-------------------------------------------------------------
+weather_data_path: "E:/CETO 2025 Spatial Analysis data/GIS/ERA5/"
+
+weather_year: '1990'
+
+# Technology data
+#tech: "HeatDemand"
+
+# Heat demand
+heat_demand_start_day: "01-10" #start day of heat demand profile, format: DD-MM
+heat_demand_end_day: "30-04" #end day of heat demand profile, format: DD-MM
+heat_demand_hour_shift: 8 # shift of heat demand profile in hours, such that daily heat demand average follows diurnal temperature profile
+heat_demand_constant: 0 # Corresponding to no temperature independent heat demand
+heat_demand_threshold: 15 # threshold for heat demand profile, in degrees Celsius
+
+#--Suitability cost assumptions----------------------------------------------------------------------
+
+# Minimum area for resource grades
+min_area_rg: 100 # in km²
+
+# Cost tiers (Money)
+tiers: {
+    'Tier1': [0, 0.5e6],
+    'Tier2': [0.5e6, 1e6],
+    'Tier3': [1e6, 2e6]
+    }
+
+# Substation distance cost factor (Money/km)
+sub_dist_cost_factor: 10
+# Road distance cost factor (Money/km)
+road_dist_cost_factor: 1
+
+# Terrain cost (cost factor per terrain type range)
+terrain_ruggedness_ranges:
+# Plains
+  - range: [0, 150]
+    cost: 0.5
+# Hills
+  - range: [150, 450]
+    cost: 1
+# Mountains
+  - range: [450, 10000]
+    cost: 2
