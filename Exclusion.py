@@ -199,8 +199,8 @@ if technology == "wind" and (config['min_wind_speed'] is not None or config['max
 else: print('Wind technology not selected in config.')
 
 # add solar exclusions
-def solar_filter(mask): #desired yearly, specific solar production (kWh/kW) 
-    """Filter out values outside the desired solar production range (kWh/kW)."""
+def solar_filter(mask): #desired yearly, specific solar production (kWh/m²/year) 
+    """Filter out values outside the desired solar production range (kWh/m²/year)."""
     min_val = tech_config.get('min_solar_production')
     max_val = tech_config.get('max_solar_production')
     if min_val is not None and max_val is not None:
@@ -301,9 +301,9 @@ eligible_share = available_area / region.geometry.item().area
 
 # print results
 print(f"\nThe eligibility share is: {eligible_share:.2%}")
-print(f'The available area is: {available_area:.2}')
+print(f'The available area is: {available_area:.2} km²')
 if tech_config['deployment_density']:
-    power_potential = available_area*1e-6 * config['deployment_density']
+    power_potential = available_area*1e-6 * tech_config['deployment_density']
     print(f'Power potential: {power_potential:.2} MW')
 
 print('\nfollowing data was considered during exclusion:')

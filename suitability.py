@@ -164,7 +164,7 @@ scenario = config['scenario']
 try:
     region_folder_name = snakemake.params.get('region')
     region_name = snakemake.params.get('region')
-    scenario = snakemake.params.get('scenario')
+    #scenario = snakemake.params.get('scenario')
 except:
     print("Snakemake params not found, using config values.")
 
@@ -203,7 +203,7 @@ solar_avail_path = os.path.join(
     f"{region_name}_solar_{scenario}_available_land_{local_crs_tag}.tif"
 )
 substation_distance_path = os.path.join(data_from_proximity, f'substation_distance.tif')
-road_distance_path = os.path.join(data_from_proximity, f'road_distance.tif')
+landcover_path = os.path.join(data_path, f"landcover_{config['landcover_source']}_{region_name}_{local_crs_tag}.tif")
 terrain_ruggedness_path = os.path.join(data_path, f'TerrainRuggednessIndex_{region_name}_{local_crs_tag}.tif')
 GWAPath = os.path.join(data_path, f'wind_{region_name}_{local_crs_tag}.tif')
 GSAPath = os.path.join(data_path, f'solar_{region_name}_{local_crs_tag}.tif')
@@ -212,39 +212,60 @@ GSAPath = os.path.join(data_path, f'solar_{region_name}_{local_crs_tag}.tif')
 wind_avail = rasterio.open(wind_avail_path)
 solar_avail = rasterio.open(solar_avail_path)
 substation_distance = rasterio.open(substation_distance_path)
-road_distance = rasterio.open(road_distance_path)
+landcover = rasterio.open(landcover_path)
 terrain_ruggedness = rasterio.open(terrain_ruggedness_path)
 GWA = rasterio.open(GWAPath)
 GSA = rasterio.open(GSAPath)
 
 # -------------- Check that rasters are formatted correcly and use same CRS --------------
-check_alignment([wind_avail_path, solar_avail_path, substation_distance_path, road_distance_path, terrain_ruggedness_path, GWAPath, GSAPath])
+#check_alignment([wind_avail_path, solar_avail_path, substation_distance_path, landcover, terrain_ruggedness_path, GWAPath, GSAPath])
 
 #---------------- Reprojection and alignment (can be deleted if all rasters are aligned) ----------------
 # Reference grid (intersection of all rasters)
-ref = wind_avail # Should be standardized to a region raster or intersection of all rasters
+ref = landcover # Should be standardized to a region raster or intersection of all rasters
 pixel_area_km2 = abs(ref.transform.a * ref.transform.e) / 1e6
 
 #Reproject rasters to a common array
 GWA_reproj = align_to_reference(GWA, ref)
 GSA_reproj = align_to_reference(GSA, ref)
 substation_distance_reproj = align_to_reference(substation_distance, ref)
-road_distance_reproj = align_to_reference(road_distance, ref)
+land_cover_reproj = align_to_reference(landcover, ref)
 terrain_ruggedness_reproj = align_to_reference(terrain_ruggedness, ref)
 wind_avail_reproj = align_to_reference(wind_avail, ref)
 solar_avail_reproj = align_to_reference(solar_avail, ref)
 
 # Cost map calculation
-terrain_ruggedness_cost_factors = np.zeros_like(terrain_ruggedness_reproj, dtype=float)
+terrain_factor_onshorewind = np.zeros_like(terrain_ruggedness_reproj, dtype=float)
+terrain_factor_solar = np.zeros_like(terrain_ruggedness_reproj, dtype=float)
 
-for terrain_type in config["terrain_ruggedness_ranges"]:
+for terrain_type in config["terrain_modifier"]:
     lower, upper = terrain_type['range']
-    cost = terrain_type['cost']
     terrain_mask = (terrain_ruggedness_reproj >= lower) & (terrain_ruggedness_reproj < upper)
-    terrain_ruggedness_cost_factors[terrain_mask] = cost
+    terrain_factor_onshorewind[terrain_mask] = terrain_type['cost']['onshorewind']
+    terrain_factor_solar[terrain_mask] = terrain_type['cost']['solar']
 
-costmap = (substation_distance_reproj * config["sub_dist_cost_factor"] + road_distance_reproj * config["road_dist_cost_factor"]) * terrain_ruggedness_cost_factors
-export_raster(costmap, os.path.join(output_path, f'costmap_{region_name}_{local_crs_tag}.tif'), ref)
+# Filter land cover and insert into terrain factor where there is data
+for landcover_type in config["landcover_modifier"].keys():
+    terrain_factor_onshorewind[land_cover_reproj == landcover_type] = config["landcover_modifier"][landcover_type]["onshorewind"]
+    terrain_factor_solar[land_cover_reproj == landcover_type] = config["landcover_modifier"][landcover_type]["solar"]
+export_raster(terrain_factor_onshorewind, os.path.join(output_path, f'terrain_factor_onshorewind_{region_name}_{local_crs_tag}.tif'), ref)
+export_raster(terrain_factor_solar, os.path.join(output_path, f'terrain_factor_solar_{region_name}_{local_crs_tag}.tif'), ref)
+
+substation_factor_onshorewind = substation_distance_reproj / config["average_sub_dist"]['onshorewind'] - 1
+substation_factor_solar = substation_distance_reproj / config["average_sub_dist"]['solar'] - 1
+
+export_raster(substation_factor_onshorewind, os.path.join(output_path, f'substation_factor_onshorewind_{region_name}_{local_crs_tag}.tif'), ref)
+export_raster(substation_factor_solar, os.path.join(output_path, f'substation_factor_solar_{region_name}_{local_crs_tag}.tif'), ref)
+
+region_factor_onshorewind = config["region_modifier"][region_name]['onshorewind']
+region_factor_solar = config["region_modifier"][region_name]['solar']
+
+
+costmap_onshorewind = (1 + terrain_factor_onshorewind * 1) * (1 + substation_factor_onshorewind * 0.1) * (1 + region_factor_onshorewind * 0.1)
+costmap_solar = (1 + terrain_factor_solar * 1) * (1 + substation_factor_solar * 0.1) * (1 + region_factor_solar * 0.1)
+
+export_raster(costmap_onshorewind, os.path.join(output_path, f'costmap_onshorewind_{region_name}_{local_crs_tag}.tif'), ref)
+export_raster(costmap_solar, os.path.join(output_path, f'costmap_solar_{region_name}_{local_crs_tag}.tif'), ref)
 
 # Resource grades
 SG = solar_config["sg_thr"].keys()
@@ -260,7 +281,8 @@ a_comb = [f"{region_name}_{sg}_{wg}" for sg, wg in SG_WG_comb]
 areas = a_indiv + a_comb
 
 # Create a DataFrame to store the area potentials (km2) for each cost tier
-df_tier_potentials = pd.DataFrame(index=areas, columns=config["tiers"].keys())
+df_tier_potentials_onshorewind = pd.DataFrame(index=areas, columns=config["tiers"].keys())
+df_tier_potentials_solar = pd.DataFrame(index=areas, columns=config["tiers"].keys())
 
 # Find all solar potentials that do not overlap with wind potentials
 for sg in SG:
@@ -273,8 +295,8 @@ for sg in SG:
     export_raster(inclusion_area, os.path.join(output_path, f'{region_name}_{sg}_{local_crs_tag}.tif'), ref)
 
     for t in config["tiers"]:
-        tier_area = filter(inclusion_area, costmap, config["tiers"][t][0], config["tiers"][t][1])
-        df_tier_potentials.loc[f"{region_name}_{sg}", t] = np.sum(tier_area) * pixel_area_km2
+        tier_area = filter(inclusion_area, costmap_solar, config["tiers"][t][0], config["tiers"][t][1])
+        df_tier_potentials_solar.loc[f"{region_name}_{sg}", t] = np.sum(tier_area) * pixel_area_km2
 
 # Find all wind potentials that do not overlap with solar potentials
 for wg in WG:
@@ -287,8 +309,8 @@ for wg in WG:
     export_raster(inclusion_area, os.path.join(output_path, f'{region_name}_{wg}_{local_crs_tag}.tif'), ref)
 
     for t in config["tiers"]:
-        tier_area = filter(inclusion_area, costmap, config["tiers"][t][0], config["tiers"][t][1])
-        df_tier_potentials.loc[f"{region_name}_{wg}", t] = np.sum(tier_area) * pixel_area_km2
+        tier_area = filter(inclusion_area, costmap_onshorewind, config["tiers"][t][0], config["tiers"][t][1])
+        df_tier_potentials_onshorewind.loc[f"{region_name}_{wg}", t] = np.sum(tier_area) * pixel_area_km2
 
 # Find all ares with combinations of solar and wind potentials
 for sg, wg in SG_WG_comb:
@@ -301,30 +323,25 @@ for sg, wg in SG_WG_comb:
     export_raster(inclusion_area, os.path.join(output_path, f'{region_name}_{sg}_{wg}_{local_crs_tag}.tif'), ref)
 
     for t in config["tiers"]:
-        tier_area = filter(inclusion_area, costmap, config["tiers"][t][0], config["tiers"][t][1])
-        df_tier_potentials.loc[f"{region_name}_{sg}_{wg}", t] = np.sum(tier_area) * pixel_area_km2
-
-# Drop areas with no potential
-df_tier_potentials = df_tier_potentials[df_tier_potentials.sum(axis=1) > 0].astype(int)
+        tier_area_onshorewind = filter(inclusion_area, costmap_onshorewind, config["tiers"][t][0], config["tiers"][t][1])
+        df_tier_potentials_onshorewind.loc[f"{region_name}_{sg}_{wg}", t] = np.sum(tier_area_onshorewind) * pixel_area_km2
+        tier_area_solar = filter(inclusion_area, costmap_solar, config["tiers"][t][0], config["tiers"][t][1])
+        df_tier_potentials_solar.loc[f"{region_name}_{sg}_{wg}", t] = np.sum(tier_area_solar) * pixel_area_km2
 
 # Export potentials to CSV
-tier_potentials_file = os.path.join(output_path, f'{region_name}_tier_potentials.csv')
-print(f'Exporting tier potentials to {rel_path(output_path)}')
-df_tier_potentials.to_csv(tier_potentials_file)
+print(f'Exporting cost tier potentials to {rel_path(output_path)}')
+tier_potentials_file_onshorewind = os.path.join(output_path, f'{region_name}_tier_potentials_onshorewind.csv')
+df_tier_potentials_onshorewind.to_csv(tier_potentials_file_onshorewind)
+tier_potentials_file_solar = os.path.join(output_path, f'{region_name}_tier_potentials_solar.csv')
+df_tier_potentials_solar.to_csv(tier_potentials_file_solar)
 
 # Export a json with the relevant areas
-relevant_resource_grades = df_tier_potentials.index.tolist()
-relevant_resource_grades_file = os.path.join(output_path, f'{region_name}_relevant_resource_grades.json')
-with open(relevant_resource_grades_file, 'w') as f:
-    json.dump(relevant_resource_grades, f)
 
-# plot available land
-plt.figure(figsize=(10, 6))
-#plt.imshow(wind_grades['WG2'], cmap='viridis', vmin=0, vmax=1)
-#plt.imshow(solar_grades['SG2'], cmap='plasma', alpha=0.5, vmin=0, vmax=1)
-plt.imshow(union(list(wind_grades.values())), cmap='viridis', vmin=0, vmax=1)
-
-plt.imshow(GSA_reproj, cmap='plasma')
-plt.title(f'Solar Available Land in {region_name}')
-plt.legend(['Available Land'])
-plt.colorbar(label='Availability')
+relevant_resource_grades_onshorewind = df_tier_potentials_onshorewind[df_tier_potentials_onshorewind.sum(axis=1) > 0].index.tolist()
+relevant_resource_grades_onshorewind_file = os.path.join(output_path, f'{region_name}_onshorewind_relevant_resource_grades.json')
+with open(relevant_resource_grades_onshorewind_file, 'w') as f:
+    json.dump(relevant_resource_grades_onshorewind, f)
+relevant_resource_grades_solar = df_tier_potentials_solar[df_tier_potentials_solar.sum(axis=1) > 0].index.tolist()
+relevant_resource_grades_solar_file = os.path.join(output_path, f'{region_name}_solar_relevant_resource_grades.json')
+with open(relevant_resource_grades_solar_file, 'w') as f:
+    json.dump(relevant_resource_grades_solar, f)
