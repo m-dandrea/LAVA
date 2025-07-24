@@ -216,8 +216,8 @@ heat_demand_threshold: 15 # threshold for heat demand profile, in degrees Celsiu
 
 #--Suitability cost assumptions----------------------------------------------------------------------
 
-# Minimum area for resource grades
-min_area_rg: 0 # in km²
+# Minimum area for resource grades (% of total available land area)
+min_area_rg: 0.05
 
 # Cost tiers
 tiers: {
@@ -239,29 +239,30 @@ terrain_modifier:
 # Plains
   - range: [0, 150]
     cost: {
-        'onshorewind': 0.02,
-        'solar': -0.01
+        'onshorewind': 1.02,
+        'solar': 0.99
     }
 # Hills
   - range: [150, 450]
     cost: {
-        'onshorewind': 0.07,
-        'solar': 0.04
+        'onshorewind': 1.07,
+        'solar': 1.04
     }
 # Mountains
   - range: [450, 10000]
     cost: {
-        'onshorewind': 0.17,
-        'solar': 0.09
+        'onshorewind': 1.17,
+        'solar': 1.09
     }
 
 landcover_modifier: {
     60: { # Bare / sparse vegetation
-        'onshorewind': -0.26,
-        'solar': -0.15
+        'onshorewind': 0.74,
+        'solar': 0.85
     }
 }
 
+# Region modifier (regional multipliers for wind and solar resources)
 region_modifier: {
     'Anhui': {'onshorewind': 1.01, 'solar': 1.03},
     'Beijing': {'onshorewind': 0.98, 'solar': 0.99},
@@ -294,4 +295,20 @@ region_modifier: {
     'Xizang': {'onshorewind': 0.93, 'solar': 0.91},
     'Yunnan': {'onshorewind': 1.03, 'solar': 1.04},
     'Zhejiang': {'onshorewind': 1.01, 'solar': 1.03}
+}
+
+# Weight of individual modifiers in the final suitability weight (% of investment cost the component affects)
+modifier_weights: {
+    'terrain': {
+        'onshorewind': 1,
+        'solar': 1
+    },
+    substation_distance: {
+        'onshorewind': 0.1,
+        'solar': 0.1
+    },
+    region': {
+        'onshorewind': 1,
+        'solar': 1
+    },
 }

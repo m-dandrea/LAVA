@@ -53,7 +53,7 @@ min_pixels_y: # currently not working, use min_pixels_connected instead
 model_areas_filename:
 
 # Technology assumptions
-solarpanel: CSi
+panel: 'CSi.yaml'
 tech_derate: 0.95
 
 # Solar resource groups (kWh/m²/year)
