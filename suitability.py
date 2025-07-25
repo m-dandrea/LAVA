@@ -264,8 +264,8 @@ export_raster(substation_factor_solar, os.path.join(output_path, f'substation_fa
 region_factor_onshorewind = config["region_modifier"][region_name]['onshorewind'] - 1
 region_factor_solar = config["region_modifier"][region_name]['solar'] - 1
 
-costmap_onshorewind = (1 + terrain_factor_onshorewind * 1) * (1 + substation_factor_onshorewind * 0.1) * (1 + region_factor_onshorewind * 0.1)
-costmap_solar = (1 + terrain_factor_solar * 1) * (1 + substation_factor_solar * 0.1) * (1 + region_factor_solar * 0.1)
+costmap_onshorewind = (1 + terrain_factor_onshorewind * config["modifier_weights"]["terrain"]["onshorewind"]) * (1 + substation_factor_onshorewind * config["modifier_weights"]["substation_distance"]["onshorewind"]) * (1 + region_factor_onshorewind * config["modifier_weights"]["region"]["onshorewind"])
+costmap_solar = (1 + terrain_factor_solar * config["modifier_weights"]["terrain"]["solar"]) * (1 + substation_factor_solar * config["modifier_weights"]["substation_distance"]["solar"]) * (1 + region_factor_solar * config["modifier_weights"]["region"]["solar"])
 
 export_raster(costmap_onshorewind, os.path.join(output_path, f'costmap_onshorewind_{region_name}_{local_crs_tag}.tif'), ref)
 export_raster(costmap_solar, os.path.join(output_path, f'costmap_solar_{region_name}_{local_crs_tag}.tif'), ref)
