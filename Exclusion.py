@@ -21,28 +21,32 @@ config_file = os.path.join("configs", "config.yaml")
 with open(config_file, "r", encoding="utf-8") as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
 
-region_name = config['region_name'] #if country is studied, then use country name
-region_name = clean_region_name(region_name)
-region_folder_name = config['region_folder_name'] #folder name for the region, e.g., 'China' or 'Germany'
+region_name = config['study_region_name'] #if country is studied, then use country name
+region_name_clean = clean_region_name(region_name)
+#region_folder_name = config['study_region_name'] #folder name for the region, e.g., 'China' or 'Germany'
 technology = config.get('technology') #technology, e.g., 'wind' or 'solar'
-scenario=   config.get('scenario', 'ref') # scenario, e.g., 'ref' or 'high'
-print(f"Config parameters: region={region_name}, technology={technology}, scenario={scenario}")
+scenario = config.get('scenario', 'ref') # scenario, e.g., 'ref' or 'high'
+
 
 #Initialize parser for command line arguments and define arguments
 parser = argparse.ArgumentParser()
-parser.add_argument("--region", default=region_name, help="region name")
-parser.add_argument("--region_folder_name", default=region_folder_name, help="region folder name")
-parser.add_argument("--technology", default=technology, help="technology type")
+parser.add_argument("--region", default=region_name_clean, help="region name")
+parser.add_argument("--region_folder_name", default=region_name_clean, help="region folder name")
 parser.add_argument("--method",default="manual", help="method to run the script, e.g., snakemake or manual")
+parser.add_argument('--technology', default=f"{technology}")
 args = parser.parse_args()
 
 # If running via Snakemake, use the region name and folder name from command line arguments
 if args.method == "snakemake":
     region_name = args.region
-    region_folder_name = args.region_folder_name
-    print(f"Running via snakemake - measures: region={region_name}, region_folder_name={region_folder_name}")
+    region_name_clean = clean_region_name(region_name)  # Clean the region name for file naming
+    technology = args.technology
+    print(f'\nExclusion for {region_name_clean}')
+    print(f"Running via snakemake - measures: region={region_name_clean}, technology={technology}, scenario={scenario}")
 else:
-    print(f"Running manually - measures: region={region_name}, region_folder_name={region_folder_name}")
+    print(f'\nExclusion for {region_name_clean}')
+    print(f"Running manually - measures: region={region_name_clean}, technology={technology}, scenario={scenario}")
+
 
 #load the technology specific configuration file
 tech_config_file = os.path.join("configs", f"{technology}.yaml")
@@ -53,17 +57,17 @@ resampled = '' #'_resampled'
 
 # construct folder paths
 dirname = os.getcwd() 
-data_path = os.path.join(dirname, 'data', region_folder_name)
-data_path_OSM = os.path.join(dirname, 'data', region_folder_name, 'OSM_Infrastructure')
+data_path = os.path.join(dirname, 'data', region_name_clean)
+data_path_OSM = os.path.join(dirname, 'data', region_name_clean, 'OSM_Infrastructure')
 data_from_DEM = os.path.join(data_path, 'derived_from_DEM')
 OSM_source = config['OSM_source']
 
 # Load the CRS
 # geo CRS
-with open(os.path.join(data_path, region_name+'_global_CRS.pkl'), 'rb') as file:
+with open(os.path.join(data_path, region_name_clean+'_global_CRS.pkl'), 'rb') as file:
         global_crs_obj = pickle.load(file)
 # projected CRS
-with open(os.path.join(data_path, region_name+'_local_CRS.pkl'), 'rb') as file:
+with open(os.path.join(data_path, region_name_clean+'_local_CRS.pkl'), 'rb') as file:
         local_crs_obj = pickle.load(file)
 
 print(f'geo CRS: {global_crs_obj}; projected CRS: {local_crs_obj}')
@@ -76,25 +80,25 @@ local_crs_tag = ''.join(auth) if auth else local_crs_obj.to_string().replace(":"
 
 
 # Paths and existence checks
-landcoverPath = os.path.join(data_path, f"landcover_{config['landcover_source']}_{region_name}_{local_crs_tag}.tif")
+landcoverPath = os.path.join(data_path, f"landcover_{config['landcover_source']}_{region_name_clean}_{local_crs_tag}.tif")
 landcover = 1 if os.path.isfile(landcoverPath) else 0
-demRasterPath = os.path.join(data_path, f'DEM_{region_name}_{global_crs_tag}{resampled}.tif')
+demRasterPath = os.path.join(data_path, f'DEM_{region_name_clean}_{global_crs_tag}{resampled}.tif')
 dem = 1 if os.path.isfile(demRasterPath) else 0
-slopeRasterPath = os.path.join(data_from_DEM, f'slope_{region_name}_{global_crs_tag}{resampled}.tif')
+slopeRasterPath = os.path.join(data_from_DEM, f'slope_{region_name_clean}_{global_crs_tag}{resampled}.tif')
 slope = 1 if os.path.isfile(slopeRasterPath) else 0
-windRasterPath = os.path.join(data_path, f'wind_{region_name}_{global_crs_tag}{resampled}.tif')
+windRasterPath = os.path.join(data_path, f'wind_{region_name_clean}_{global_crs_tag}{resampled}.tif')
 wind = 1 if os.path.isfile(windRasterPath) else 0
-solarRasterPath = os.path.join(data_path, f'solar_{region_name}_{global_crs_tag}{resampled}.tif')
+solarRasterPath = os.path.join(data_path, f'solar_{region_name_clean}_{global_crs_tag}{resampled}.tif')
 solar = 1 if os.path.isfile(solarRasterPath) else 0
 
-regionPath = os.path.join(data_path, f'{region_name}_{local_crs_tag}.geojson')
+regionPath = os.path.join(data_path, f'{region_name_clean}_{local_crs_tag}.geojson')
 region = gpd.read_file(regionPath)
 
-northfacingRasterPath = os.path.join(data_from_DEM, f'north_facing_{region_name}_{global_crs_tag}{resampled}.tif')
+northfacingRasterPath = os.path.join(data_from_DEM, f'north_facing_{region_name_clean}_{global_crs_tag}{resampled}.tif')
 nfacing = 1 if os.path.isfile(northfacingRasterPath) else 0
-coastlinesPath = os.path.join(data_path, f'goas_{region_name}_{global_crs_tag}.gpkg')
+coastlinesPath = os.path.join(data_path, f'goas_{region_name_clean}_{global_crs_tag}.gpkg')
 coastlines = 1 if os.path.isfile(coastlinesPath) else 0
-protectedAreasPath = os.path.join(data_path, f"protected_areas_{config['protected_areas_source']}_{region_name}_{global_crs_tag}.gpkg")
+protectedAreasPath = os.path.join(data_path, f"protected_areas_{config['protected_areas_source']}_{region_name_clean}_{global_crs_tag}.gpkg")
 protectedAreas = 1 if os.path.isfile(protectedAreasPath) else 0
 
 # OSM
@@ -121,14 +125,14 @@ additional_exclusion_polygons = 1 if os.path.exists(additional_exclusion_polygon
 
 
 # load unique land use codes
-with open(os.path.join(data_path, f'landuses_{region_name}.json'), 'r') as fp:
+with open(os.path.join(data_path, f'landuses_{region_name_clean}.json'), 'r') as fp:
     landuses = json.load(fp)
 
 # load pixel size
 if config['resolution_manual'] is not None:
     res = config['resolution_manual']
 else:
-    with open(os.path.join(data_path, f'pixel_size_{region_name}_{local_crs_tag}.json'), 'r') as fp:
+    with open(os.path.join(data_path, f'pixel_size_{region_name_clean}_{local_crs_tag}.json'), 'r') as fp:
         res = json.load(fp)
     
 
@@ -333,6 +337,7 @@ for item in info_list_not_selected:
 
 
 # calculate available areas
+print('\nperforming exclusions...')
 masked, transform = shape_availability(region.geometry, excluder)
 
 available_area = masked.sum() * excluder.res**2
@@ -404,7 +409,7 @@ metadata = {
 # Define output directory
 output_dir = os.path.join(data_path, 'available_land')
 os.makedirs(output_dir, exist_ok=True)
-output_file_available_land = os.path.join(output_dir, f"{region_name}_{technology}_{scenario}_available_land_{local_crs_tag}.tif")
+output_file_available_land = os.path.join(output_dir, f"{region_name_clean}_{technology}_{scenario}_available_land_{local_crs_tag}.tif")
 # Write the array to a new .tif file
 with rasterio.open(output_file_available_land, 'w', **metadata) as dst:
     dst.write(array, 1)
@@ -438,7 +443,10 @@ if config['model_areas_filename']:
 
 
 # save info in textfile
-with open(os.path.join(output_dir, f"{region_name}_{scenario}_{technology}_exclusion_info.txt"), "w") as file:
+with open(os.path.join(output_dir, f"{region_name_clean}_{scenario}_{technology}_exclusion_info.txt"), "w") as file:
+    file.write(f"{technology}")
+    file.write(f"\nscenario: {scenario}")
+    file.write(f"\nmin pixels connected: {min_pixels_connected}\n\n")
     for item in info_list_exclusion:
         file.write(f"{item}\n")
     file.write(f"\neligibility share: {eligible_share:.2%}")

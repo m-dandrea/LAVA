@@ -154,9 +154,10 @@ onshorewind_config_file = os.path.join("configs", f"onshorewind.yaml")
 with open(onshorewind_config_file, "r", encoding="utf-8") as f:
     onshorewind_config = yaml.load(f, Loader=yaml.FullLoader)
 
-region_folder_name = config['region_folder_name']
-region_name = config['region_name'] #if country is studied, then use country name
+region_folder_name = config['study_region_name']
+region_name = config['study_region_name'] #if country is studied, then use country name
 region_name = clean_region_name(region_name)
+region_folder_name = clean_region_name(region_folder_name)
 scenario = config['scenario']
 
 #Initialize parser for command line arguments and define arguments
