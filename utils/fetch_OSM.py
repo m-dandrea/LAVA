@@ -143,7 +143,7 @@ def osm_to_gpkg(
         gdf.to_file(gpkg_path, driver="GPKG")
         print(f"  ✔ Saved {len(gdf)} {geom_type}(s) to {rel_path(gpkg_path)}")
 
-    print(f"✅ Finished '{feature_key}' for {region_name} in {time.time() - start_time:.2f} seconds.")
+    #print(f"✅ Finished '{feature_key}' for {region_name} in {time.time() - start_time:.2f} seconds.")
     return unsupported_counts
 
 
