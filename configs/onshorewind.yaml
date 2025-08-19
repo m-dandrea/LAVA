@@ -8,10 +8,10 @@ deployment_density: 10 # MW/km²
 # exclusion container resolution manual
 resolution_manual: null
 
-
 #landcover codes (buffer in meters) (here landcover codes for openeo as default example)
 landcover_codes: #dictionary of landcover code with corresponding buffer in meters
   50: 500  
+
 
 #landcover codes (buffer in meters) (here landcover codes for openeo as default example)
 #| Code | Class                    |
@@ -44,7 +44,7 @@ coastlines_buffer: 200
 protectedAreas_buffer: 0
 transmission_lines_buffer: 100
 generators_buffer: null
-plants_buffer: null
+plants_buffer: null   
 
 # additional exclusion polygons
 additional_exclusion_polygons_buffer: [] #list of buffers in meters in the order of the files in the "additional_exclusion_polygons"-folder in the region data folder
@@ -54,9 +54,11 @@ min_wind_speed: 4.5 #m/s
 max_wind_speed: null #m/s
 
 # inclusion filter
-# EITHER use substations OR transmission (meters)
-substations_inclusion_buffer: null
+# EITHER use substations OR transmission OR roads (meters)
+substations_inclusion_buffer: 50000
 transmission_inclusion_buffer: null
+roads_inclusion_buffer: null
+
 
 # area filter
 min_pixels_connected: 5

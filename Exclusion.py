@@ -32,19 +32,21 @@ scenario = config.get('scenario', 'ref') # scenario, e.g., 'ref' or 'high'
 parser = argparse.ArgumentParser()
 parser.add_argument("--region", default=region_name_clean, help="region name")
 parser.add_argument("--method",default="manual", help="method to run the script, e.g., snakemake or manual")
+parser.add_argument("--scenario", default=scenario, help="scenario name")
 parser.add_argument('--technology', default=f"{technology}")
 args = parser.parse_args()
 
 # If running via Snakemake, use the region name and folder name from command line arguments
 if args.method == "snakemake":
-    region_name = args.region
-    region_name_clean = clean_region_name(region_name)  # Clean the region name for file naming
+    region_name_clean = clean_region_name(args.region)
+    region_folder_name = args.region_folder_name
     technology = args.technology
+    scenario = args.scenario
     print(f'\nExclusion for {region_name_clean}')
-    print(f"Running via snakemake - measures: region={region_name_clean}, technology={technology}, scenario={scenario}")
+    print(f"Running via snakemake - measures: region={region_name}, region_folder_name={region_folder_name}, technology={technology}, scenario={scenario}")
 else:
     print(f'\nExclusion for {region_name_clean}')
-    print(f"Running manually - measures: region={region_name_clean}, technology={technology}, scenario={scenario}")
+    print(f"Running manually - measures: region={region_name}, region_folder_name={region_folder_name}, technology={technology}, scenario={scenario}")
 
 
 #load the technology specific configuration file
@@ -235,6 +237,7 @@ elif solar==0: info_list_not_available.append(f"solar")
 
 
 # add exclusions from vector data
+# Railways
 param = tech_config['railways_buffer']
 if railways==1 and param is not None: 
     excluder.add_geometry(railwaysPath, buffer=param)
@@ -314,6 +317,7 @@ if plants == 1 and param is not None:
 elif plants == 1 and param is None: info_list_not_selected.append("existing plants")
 elif plants == 0: info_list_not_available.append("existing plants")
 
+
 # add additional exclusion polygons
 if additional_exclusion_polygons==1 and tech_config['additional_exclusion_polygons_buffer']:   
     for i, (buffer_value, filename) in enumerate(zip(tech_config['additional_exclusion_polygons_buffer'], os.listdir(additional_exclusion_polygons_Path))):
@@ -322,8 +326,6 @@ if additional_exclusion_polygons==1 and tech_config['additional_exclusion_polygo
         info_list_exclusion.append(f'additional exclusion polygon file {i+1}: {buffer_value}')
 elif additional_exclusion_polygons == 1 and tech_config['additional_exclusion_polygons_buffer'] is None: info_list_not_selected.append("additional_exclusion_polygons_buffer")
 elif additional_exclusion_polygons == 0: info_list_not_available.append("additional_exclusion_polygons_buffer")
-
-
 
 
 # INCLUSION
@@ -342,6 +344,14 @@ if transmission == 1 and param is not None:
     info_list_exclusion.append(f"transmission inclusion buffer: {param}")
 elif transmission == 1 and param is None: info_list_not_selected.append("transmission")
 elif transmission == 0: info_list_not_available.append("transmission")
+
+# Roads (Inclusion Buffer)
+param = tech_config['roads_inclusion_buffer']
+if roads == 1 and param is not None:
+    excluder.add_geometry(roadsPath, buffer=param, invert=True)
+    info_list_exclusion.append(f"roads inclusion buffer: {param}")
+elif roads == 1 and param is None: info_list_not_selected.append("roads")
+elif roads == 0: info_list_not_available.append("roads")
 
 
 # data info
