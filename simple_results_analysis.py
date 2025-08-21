@@ -77,9 +77,10 @@ def _array_to_gdf(data, transform, nodata, crs) -> gpd.GeoDataFrame:
 def parse_info_json(path: Path) -> dict | None:
     """Parse exclusion info JSON file and return metrics.
 
-    Expected keys are ``eligibility_share`` (fractional), ``available_area_m2``
-    and ``power_potential_MW`` written in ``Exclusion.py``. Returns ``None``
-    if the file is missing, cannot be decoded or lacks required keys.
+    Expected keys are ``technology``, ``scenario``, ``eligibility_share``
+    (fractional), ``available_area_m2`` and ``power_potential_MW`` written in
+    ``Exclusion.py``. Returns ``None`` if the file is missing, cannot be
+    decoded or lacks required keys.
     """
 
     try:
@@ -94,6 +95,8 @@ def parse_info_json(path: Path) -> dict | None:
 
     try:
         return {
+            "technology": str(data["technology"]),
+            "scenario": str(data["scenario"]),
             "eligibility_share": float(data["eligibility_share"]),
             "available_area": float(data["available_area_m2"]),
             "power_potential": float(data["power_potential_MW"]),
