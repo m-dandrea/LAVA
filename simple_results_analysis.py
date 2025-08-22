@@ -11,10 +11,12 @@ default).
 
 Usage::
 
-    python simple_results_analysis.py [--root PATH] [--output FILE]
+    python simple_results_analysis.py [--root PATH] [--output FILE] [--json-output FILE]
 
 By default ``--root`` is the directory containing this script, i.e. the
-repository root. ``--output`` sets the resulting GeoPackage path.
+repository root. ``--output`` sets the resulting GeoPackage path and
+``--json-output`` specifies where to write a JSON file with the individual
+measures and their aggregated values.
 """
 
 from __future__ import annotations
@@ -99,7 +101,7 @@ def parse_info_json(path: Path) -> dict | None:
         return None
 
 
-def aggregate_available_land(root: Path, output: Path) -> None:
+def aggregate_available_land(root: Path, output: Path, json_output: Path) -> None:
     info_files = list(root.glob("data/**/available_land/*_exclusion_info.json"))
     groups: dict[tuple[str, str], list[tuple[str, Path, dict]]] = {}
     for info_file in info_files:
@@ -118,6 +120,8 @@ def aggregate_available_land(root: Path, output: Path) -> None:
     if not groups:
         print("No available land rasters found.")
         return
+
+    results: dict[str, dict] = {}
 
     for (tech, scen), items in groups.items():
         paths = [p for _, p, _ in items]
@@ -145,16 +149,35 @@ def aggregate_available_land(root: Path, output: Path) -> None:
         gdf.to_file(output, layer=layer, driver="GPKG")
         print(f"Written layer {layer} with {len(paths)} files")
 
+        region_measures: dict[str, dict] = {}
         for region, _, info in items:
             print(
                 f"{region}: share={info['eligibility_share']:.2%}, area={info['available_area']:.2f} m2, "
                 f"power={info['power_potential']:.2f} MW"
             )
+            region_measures[region] = {
+                "eligibility_share": info["eligibility_share"],
+                "available_area": info["available_area"],
+                "power_potential": info["power_potential"],
+            }
         share_str = f"{share_agg:.2%}" if share_agg is not None else "NA"
         print(
             f"Total {tech} {scen}: share={share_str}, "
             f"area={area_sum:.2f} m2, power={power_sum:.2f} MW"
         )
+
+        results[f"{tech}_{scen}"] = {
+            "regions": region_measures,
+            "aggregated": {
+                "eligibility_share": share_agg,
+                "available_area": area_sum,
+                "power_potential": power_sum,
+            },
+        }
+
+    with json_output.open("w") as f:
+        json.dump(results, f, indent=2)
+    print(f"Written metrics JSON to {json_output}")
 
 
 if __name__ == "__main__":
@@ -165,6 +188,17 @@ if __name__ == "__main__":
         default=Path(__file__).resolve().parent,
         help="Project root containing data directory",
     )
-    parser.add_argument("--output", type=Path, default=Path("aggregated_available_land.gpkg"), help="Output GeoPackage path")
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("aggregated_available_land.gpkg"),
+        help="Output GeoPackage path",
+    )
+    parser.add_argument(
+        "--json-output",
+        type=Path,
+        default=Path("aggregated_available_land.json"),
+        help="Path to write aggregated metrics JSON",
+    )
     args = parser.parse_args()
-    aggregate_available_land(args.root, args.output)
+    aggregate_available_land(args.root, args.output, args.json_output)
