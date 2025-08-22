@@ -150,8 +150,9 @@ def aggregate_available_land(root: Path, output: Path) -> None:
                 f"{region}: share={info['eligibility_share']:.2%}, area={info['available_area']:.2f} m2, "
                 f"power={info['power_potential']:.2f} MW"
             )
+        share_str = f"{share_agg:.2%}" if share_agg is not None else "NA"
         print(
-            f"Total {tech} {scen}: share={share_agg:.2% if share_agg is not None else 'NA'}, "
+            f"Total {tech} {scen}: share={share_str}, "
             f"area={area_sum:.2f} m2, power={power_sum:.2f} MW"
         )
 
