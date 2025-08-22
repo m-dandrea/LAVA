@@ -65,3 +65,4 @@
 !bias_correction_factors
 !bias_correction_factors/ERA5_wnd100m_bias.nc
 !weather_data
+!delete_available_land.py
