@@ -59,6 +59,7 @@
 !weather_data_prep.py
 !simple_results_analysis.py
 !snakefile_short
+!snakefile_short_short
 !templates/onshorewind_china.yaml
 !templates/solar_china.yaml
 !templates
