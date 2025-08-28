@@ -181,7 +181,7 @@ elif slope==0: info_list_not_available.append(f"slope")
 # add terrain ruggedness exclusions
 param = tech_config['max_terrain_ruggedness']
 if terrain_ruggedness==1 and param is not None:
-    excluder.add_raster(terrain_ruggedness_path, codes=range(param,10000), crs=global_crs_obj)
+    excluder.add_raster(terrain_ruggedness_path, codes=range(0,param), invert=True, crs=global_crs_obj)
     info_list_exclusion.append(f"max terrain ruggedness: {param}")
 elif terrain_ruggedness==1 and param is None: info_list_not_selected.append(f"terrain_ruggedness")
 elif terrain_ruggedness==0: info_list_not_available.append(f"terrain_ruggedness")

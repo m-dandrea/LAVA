@@ -55,17 +55,17 @@ plants_buffer: 1000
 additional_exclusion_polygons_buffer: [] #list of buffers in meters in the order of the files in the "additional_exclusion_polygons"-folder in the region data folder
 
 # energy resources
-min_wind_speed: 4.5 #m/s
+min_wind_speed: 3 #m/s
 max_wind_speed: null #m/s
 
 # inclusion filter
 # EITHER use substations OR transmission OR roads (meters)
 substations_inclusion_buffer: null
-transmission_inclusion_buffer: 100000
+transmission_inclusion_buffer: null
 roads_inclusion_buffer: 10000
 
 # area filter
-min_pixels_connected: 5
+min_pixels_connected: 1
 min_pixels_x: # currently not working, use min_pixels_connected instead
 min_pixels_y: # currently not working, use min_pixels_connected instead
 
