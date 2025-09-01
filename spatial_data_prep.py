@@ -18,6 +18,7 @@ import richdem
 import xdem
 import logging
 import argparse
+import numpy as np
 from pyproj import CRS
 from utils.data_preprocessing import *
 from utils.local_OSM_shp_files import *
@@ -511,6 +512,7 @@ try:
         else:
             dem = xdem.DEM(dem_local_buffered_Path)
             tri = dem.terrain_ruggedness_index(window_size=9)
+            tri.data = np.rint(tri.data).astype(np.int32)
             tri.save(tri_local_path)
             reproject_raster(tri_local_path, region_name_clean, 4326, 'nearest', 'float32', tri_global_path)
     
