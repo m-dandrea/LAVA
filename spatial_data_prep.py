@@ -465,8 +465,8 @@ try:
     dem_4326_Path = os.path.join(output_dir, f'DEM_{region_name_clean}_EPSG4326.tif')
     #reproject and match resolution of DEM to landcover data (co-registration)
     dem_localCRS_Path=os.path.join(output_dir, f'DEM_{region_name_clean}_{local_crs_tag}.tif')
-    dem_resampled_Path=os.path.join(output_dir, f'DEM_{region_name_clean}_{local_crs_tag}_resampled.tif') 
-    co_register(dem_localCRS_Path, processed_landcover_filePath, 'nearest', dem_resampled_Path, dtype='int16')
+    # dem_resampled_Path=os.path.join(output_dir, f'DEM_{region_name_clean}_{local_crs_tag}_resampled.tif') 
+    # co_register(dem_localCRS_Path, processed_landcover_filePath, 'nearest', dem_resampled_Path, dtype='int16')
 
     #slope and aspect map
     # Define output directories
@@ -479,8 +479,8 @@ try:
     slope = richdem.TerrainAttribute(dem_file, attrib='slope_degrees')
     slopeFilePathLocalCRS = os.path.join(richdem_helper_dir, f'slope_{region_name_clean}_{local_crs_tag}.tif')
     save_richdem_file(slope, dem_localCRS_Path, slopeFilePathLocalCRS)
-    slope_co_registered_FilePath = os.path.join(richdem_helper_dir, f'slope_{region_name_clean}_{local_crs_tag}_resampled.tif')
-    co_register(slopeFilePathLocalCRS, processed_landcover_filePath, 'nearest', slope_co_registered_FilePath, dtype='int16')
+    # slope_co_registered_FilePath = os.path.join(richdem_helper_dir, f'slope_{region_name_clean}_{local_crs_tag}_resampled.tif')
+    # co_register(slopeFilePathLocalCRS, processed_landcover_filePath, 'nearest', slope_co_registered_FilePath, dtype='int16')
     #save in 4326: slope cannot be calculated from EPSG4326 because units get confused (https://github.com/r-barnes/richdem/issues/34)
     slopeFilePath4326 = os.path.join(richdem_helper_dir, f'slope_{region_name_clean}_EPSG4326.tif')
     reproject_raster(slopeFilePathLocalCRS, region_name_clean, 4326, 'nearest', 'int16', slopeFilePath4326)
@@ -491,8 +491,8 @@ try:
     aspect = richdem.TerrainAttribute(dem_file, attrib='aspect')
     aspectFilePathLocalCRS = os.path.join(richdem_helper_dir, f'aspect_{region_name_clean}_{local_crs_tag}.tif')
     save_richdem_file(aspect, dem_localCRS_Path, aspectFilePathLocalCRS)
-    aspect_co_registered_FilePath = os.path.join(richdem_helper_dir, f'aspect_{region_name_clean}_{local_crs_tag}_resampled.tif')
-    co_register(aspectFilePathLocalCRS, processed_landcover_filePath, 'nearest', aspect_co_registered_FilePath, dtype='int16')
+    # aspect_co_registered_FilePath = os.path.join(richdem_helper_dir, f'aspect_{region_name_clean}_{local_crs_tag}_resampled.tif')
+    # co_register(aspectFilePathLocalCRS, processed_landcover_filePath, 'nearest', aspect_co_registered_FilePath, dtype='int16')
     #save in 4326: not sure if aspect is calculated correctly in EPSG4326 because units might get confused (https://github.com/r-barnes/richdem/issues/34)
     aspectFilePath4326 = os.path.join(richdem_helper_dir, f'aspect_{region_name_clean}_EPSG4326.tif')
     reproject_raster(aspectFilePathLocalCRS, region_name_clean, 4326, 'nearest', 'int16', aspectFilePath4326)
