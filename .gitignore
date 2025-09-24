@@ -35,6 +35,8 @@
 !configs/config_template_china.yaml
 !configs/onshorewind_template_china.yaml
 !configs/solar_template_china.yaml
+!configs/onshorewind_template.yaml
+!configs/solar_template.yaml
 !configs/technologies
 !configs/technologies/HW_distributed_farm.yaml
 !configs/technologies/LW_distributed_farm.yaml
