@@ -48,8 +48,8 @@
 !data_explore.ipynb
 !utils/simplify.py
 !utils/gadm_levels_to_geojson.py
-!utils/delete_available_land.py
-!utils/simple_results_analysis.py
+!utils/delete_scenario_results.py
+!utils/results_analysis.py
 !snakemake
 !snakemake/Snakefile
 !snakemake/snakefile_short

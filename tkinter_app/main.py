@@ -1,5 +1,6 @@
 """Tkinter-based translation of the Python Script Manager interface."""
 from __future__ import annotations
+import html
 import json
 import os
 import queue
@@ -11,12 +12,27 @@ import sys
 import tempfile
 import threading
 import time
+import webbrowser
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+import numpy as np
+from PIL import Image
+import folium
+import rasterio
+from rasterio.enums import Resampling
+from rasterio.warp import transform_bounds
+from branca.element import MacroElement, Template
+
+try:  # Optional ttkbootstrap theming
+    from ttkbootstrap import Style  # type: ignore
+
+    HAVE_TTKBOOTSTRAP = True
+except Exception:  # pragma: no cover - optional dependency
+    HAVE_TTKBOOTSTRAP = False
 CURRENT_DIR = Path(__file__).resolve().parent
 PARENT_DIR = CURRENT_DIR.parent
 SNAKEMAKE_GLOBAL_PATH = PARENT_DIR / "snakemake"/ "Snakefile_global"
@@ -113,6 +129,302 @@ def yaml_to_sections(
             else:
                 param["value"] = "" if raw_value is None else str(raw_value)
     return updated, None
+
+
+def _extract_geojson_bounds(payload: Any) -> Optional[List[List[float]]]:
+    coords: List[Tuple[float, float]] = []
+
+    def visit(node: Any) -> None:
+        if isinstance(node, dict):
+            for value in node.values():
+                visit(value)
+        elif isinstance(node, (list, tuple)):
+            if node and isinstance(node[0], (int, float)):
+                if len(node) >= 2:
+                    lon, lat = node[:2]
+                    coords.append((float(lat), float(lon)))
+            else:
+                for child in node:
+                    visit(child)
+
+    visit(payload)
+    if not coords:
+        return None
+    lats, lons = zip(*coords)
+    south, north = min(lats), max(lats)
+    west, east = min(lons), max(lons)
+    return [[south, west], [north, east]]
+
+
+def _percentile_stretch(arr: np.ndarray, pmin: float = 2, pmax: float = 98) -> np.ndarray:
+    """Scale array to 0..255 using per-band percentiles."""
+    a = arr.astype("float32", copy=False)
+    lo = float(np.nanpercentile(a, pmin))
+    hi = float(np.nanpercentile(a, pmax))
+    if hi <= lo:
+        hi = lo + 1.0
+    scaled = (a - lo) / (hi - lo)
+    scaled = np.clip(scaled, 0.0, 1.0) * 255.0
+    return scaled.astype("uint8")
+
+
+def geotiff_to_png_with_bounds(
+    tif_path: str, out_dir: str, max_size_px: int = 2048, png_quality: int = 90
+) -> Tuple[str, List[List[float]]]:
+    """
+    Convert GeoTIFF to PNG for Leaflet ImageOverlay with better visual parity to QGIS:
+      - applies palette if present
+      - percentile stretch for 16-bit / float bands
+      - NoData -> alpha
+    Returns (png_path, [[south, west],[north, east]]) in EPSG:4326.
+    """
+    src_path = Path(tif_path)
+    out_dir_path = Path(out_dir)
+    out_dir_path.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(src_path) as src:
+        bounds = src.bounds
+        if src.crs and src.crs.to_string() != "EPSG:4326":
+            west, south, east, north = transform_bounds(
+                src.crs, "EPSG:4326", bounds.left, bounds.bottom, bounds.right, bounds.top
+            )
+        else:
+            west, south, east, north = bounds.left, bounds.bottom, bounds.right, bounds.top
+
+        nodata = src.nodata
+        mask = src.dataset_mask().astype(bool)
+
+        try:
+            palette = src.colormap(1)
+        except Exception:
+            palette = None
+
+        if src.count == 1 and palette:
+            band = src.read(1, resampling=Resampling.nearest)
+            lut = np.zeros((256, 4), dtype="uint8")
+            for key, value in palette.items():
+                lut[key, :] = value
+            band_clip = np.clip(band, 0, 255).astype("uint8")
+            rgba = lut[band_clip]
+            if nodata is not None:
+                rgba[..., 3] = np.where((band == nodata) | (~mask), 0, rgba[..., 3])
+            else:
+                rgba[..., 3] = np.where(~mask, 0, rgba[..., 3])
+            img = Image.fromarray(rgba, mode="RGBA")
+        else:
+            if src.count >= 3:
+                arr = src.read([1, 2, 3], resampling=Resampling.nearest)
+                if str(arr.dtype) != "uint8":
+                    arr = np.stack([_percentile_stretch(arr[i]) for i in range(3)], axis=0)
+                arr = np.transpose(arr, (1, 2, 0))
+            else:
+                band = src.read(1, resampling=Resampling.nearest)
+                if str(band.dtype) != "uint8":
+                    band = _percentile_stretch(band)
+                arr = np.stack([band, band, band], axis=-1)
+
+            if nodata is not None and src.count >= 1:
+                raw1 = src.read(1, resampling=Resampling.nearest)
+                alpha = np.where((raw1 == nodata) | (~mask), 0, 255).astype("uint8")
+            else:
+                alpha = np.where(mask, 255, 0).astype("uint8")
+
+            rgba = np.dstack([arr, alpha])
+            img = Image.fromarray(rgba, mode="RGBA")
+
+        width, height = img.size
+        scale = min(1.0, max_size_px / float(max(width, height)))
+        if scale < 1.0:
+            new_size = (int(width * scale), int(height * scale))
+            img = img.resize(new_size, Image.BILINEAR)
+
+        png_path = out_dir_path / (src_path.stem + ".png")
+        img.save(png_path, optimize=True, quality=png_quality)
+
+    return str(png_path), [[south, west], [north, east]]
+
+
+def build_map_html(
+    layers: List[Dict[str, Any]],
+    out_html: str,
+    legend_html: str = "",
+    default_center: Tuple[float, float] = (55.6761, 12.5683),
+    default_zoom: int = 7,
+    raster_opacity: float = 0.7,
+) -> Optional[List[List[float]]]:
+    out_html_path = Path(out_html)
+    out_html_path.parent.mkdir(parents=True, exist_ok=True)
+    fmap = folium.Map(location=default_center, zoom_start=default_zoom, control_scale=True)
+
+    def update_union(
+        current: Optional[List[List[float]]], new_bounds: Optional[List[List[float]]]
+    ) -> Optional[List[List[float]]]:
+        if not new_bounds:
+            return current
+        if current is None:
+            return [[new_bounds[0][0], new_bounds[0][1]], [new_bounds[1][0], new_bounds[1][1]]]
+        south = min(current[0][0], new_bounds[0][0])
+        west = min(current[0][1], new_bounds[0][1])
+        north = max(current[1][0], new_bounds[1][0])
+        east = max(current[1][1], new_bounds[1][1])
+        return [[south, west], [north, east]]
+
+    sorted_layers = sorted(layers, key=lambda item: (item.get("order", 0), item.get("index", 0)))
+    union_bounds: Optional[List[List[float]]] = None
+    for layer in sorted_layers:
+        display_name = layer.get("display_name") or layer.get("name") or "Layer"
+        if layer["type"] == "raster":
+            image_path = Path(layer["image_path"])
+            if not image_path.exists():
+                raise FileNotFoundError(f"Raster image missing: {image_path}")
+            overlay = folium.raster_layers.ImageOverlay(
+                name=display_name,
+                image=str(image_path.resolve()),
+                bounds=layer["bounds"],
+                opacity=float(layer.get("opacity", raster_opacity)),
+                interactive=True,
+                zindex=int(layer.get("order", 0)),
+            )
+            overlay.add_to(fmap)
+            union_bounds = update_union(union_bounds, layer["bounds"])
+        elif layer["type"] == "geojson":
+            geojson_data = layer["data"]
+            opacity = float(layer.get("opacity", 1.0))
+            style_dict = layer.get("style") or {
+                "color": layer.get("color", "#3388ff"),
+                "weight": 2,
+                "opacity": opacity,
+                "fillOpacity": max(0.0, min(1.0, opacity * 0.6)),
+            }
+
+            def style_function(_feature, style=style_dict) -> Dict[str, Any]:
+                return style
+
+            def highlight_function(_feature, style=style_dict) -> Dict[str, Any]:
+                highlighted = dict(style)
+                highlighted["weight"] = style.get("weight", 2) + 1
+                highlighted["opacity"] = min(1.0, style.get("opacity", opacity) + 0.1)
+                highlighted["fillOpacity"] = min(1.0, style.get("fillOpacity", opacity * 0.6) + 0.1)
+                return highlighted
+
+            geojson_layer = folium.GeoJson(
+                geojson_data,
+                name=display_name,
+                style_function=style_function,
+                highlight_function=highlight_function,
+            )
+            geojson_layer.add_to(fmap)
+            gj_bounds = layer.get("bounds") or _extract_geojson_bounds(geojson_data)
+            union_bounds = update_union(union_bounds, gj_bounds)
+        else:
+            raise ValueError(f"Unsupported layer type: {layer['type']}")
+    folium.LayerControl(collapsed=False).add_to(fmap)
+    if union_bounds:
+        fmap.fit_bounds(union_bounds)
+
+    if legend_html:
+        legend_content = legend_html
+        if "<" not in legend_content:
+            legend_content = "<br>".join(html.escape(part) for part in legend_content.splitlines())
+        template = Template(
+            f"""
+            {{% macro html() %}}
+            <div style="position: fixed; bottom: 30px; left: 30px; z-index: 9999; background: rgba(255, 255, 255, 0.85); padding: 12px; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); max-width: 240px; font-size: 13px; line-height: 1.4;">
+                {legend_content}
+            </div>
+            {{% endmacro %}}
+            """
+        )
+        macro = MacroElement()
+        macro._template = template
+        fmap.get_root().add_child(macro)
+
+    fmap.save(str(out_html_path))
+    return union_bounds
+
+
+def _show_map_fallback(html_path: Path, parent: tk.Widget, reason: Optional[str] = None) -> Dict[str, Any]:
+    info = "Interactive map opened in your default browser."
+    if reason:
+        info = f"{info} ({reason})"
+    label = ttk.Label(parent, text=info, foreground="#a66b00", wraplength=420, justify="left")
+    label.pack(fill="x", padx=10, pady=8)
+    webbrowser.open_new_tab(html_path.resolve().as_uri())
+    return {"embedded": False, "widget": label, "cleanup": lambda: None}
+
+
+def show_map_in_tk(html_path: str, parent: tk.Widget) -> Dict[str, Any]:
+    target = Path(html_path)
+    try:
+        from tkwebview2.tkwebview2 import WebView2  # type: ignore
+    except Exception as exc:  # pragma: no cover - optional dependency
+        return _show_map_fallback(target, parent, f"tkwebview2 unavailable: {exc}")
+
+    container = ttk.Frame(parent)
+    container.pack(fill="both", expand=True)
+    container.update_idletasks()
+    width = max(container.winfo_width(), 400)
+    height = max(container.winfo_height(), 300)
+    try:
+        widget = WebView2(container, width=width, height=height)
+    except Exception as exc:
+        container.destroy()
+        return _show_map_fallback(target, parent, f"Unable to initialise WebView2: {exc}")
+
+    widget.pack(fill="both", expand=True)
+    uri = target.resolve().as_uri()
+    loaded = False
+    for method_name in ("load_url", "navigate", "go"):
+        method = getattr(widget, method_name, None)
+        if callable(method):
+            try:
+                method(uri)
+                loaded = True
+                break
+            except Exception:
+                continue
+    if not loaded:
+        try:
+            html_text = target.read_text(encoding="utf-8")
+        except Exception as exc:
+            widget.destroy()
+            container.destroy()
+            return _show_map_fallback(target, parent, f"Unable to display map: {exc}")
+        html_loaded = False
+        for method_name in ("load_html", "load_html_string", "set_html", "load_html_content"):
+            method = getattr(widget, method_name, None)
+            if callable(method):
+                try:
+                    method(html_text)
+                    html_loaded = True
+                    break
+                except Exception:
+                    continue
+        if not html_loaded:
+            try:
+                widget.html = html_text  # type: ignore[attr-defined]
+                html_loaded = True
+            except Exception:
+                html_loaded = False
+        if not html_loaded:
+            widget.destroy()
+            container.destroy()
+            return _show_map_fallback(target, parent, "Unable to display map in embedded viewer.")
+
+    def cleanup() -> None:
+        try:
+            widget.destroy()
+        except Exception:
+            pass
+        if container.winfo_exists():
+            try:
+                container.destroy()
+            except Exception:
+                pass
+
+    container.bind("<Destroy>", lambda _e: cleanup())
+    return {"embedded": True, "widget": container, "cleanup": cleanup, "browser": widget}
+
+
 class ConfigurationTab(ttk.Frame):
     """Configuration management tab."""
     def __init__(self, master: tk.Widget, sections: List[Dict[str, Any]]):
@@ -159,6 +471,7 @@ class ConfigurationTab(ttk.Frame):
         self.visual_container = ttk.Frame(self.config_tab)
         self.visual_container.grid(row=1, column=0, sticky="nsew", padx=10, pady=5)
         self.visual_container.columnconfigure(1, weight=1)
+        self.visual_container.columnconfigure(0, minsize=260)  # widen left pane
         self.visual_container.rowconfigure(0, weight=1)
         self.section_list_var = tk.StringVar(value=[sec.get("displayName", sec["name"]) for sec in self.sections])
         self.section_listbox = tk.Listbox(
@@ -296,21 +609,21 @@ class ConfigurationTab(ttk.Frame):
         return entries
     def _build_raw_extra_editor(self, label: str, info: Dict[str, Any], parent: tk.Widget) -> None:
         text_widget = tk.Text(parent, wrap="none", font=("Courier New", 10))
-        text_widget.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        text_widget.grid(row=0, column=0, sticky="nsew", padx=8, pady=(4, 6))
         text_widget.insert("1.0", info.get("baseline", ""))
         text_widget.bind("<KeyRelease>", lambda _event, name=label: self._mark_extra_dirty(name))
         scroll_y = ttk.Scrollbar(parent, orient="vertical", command=text_widget.yview)
-        scroll_y.grid(row=0, column=1, sticky="ns", pady=10)
+        scroll_y.grid(row=0, column=1, sticky="ns", pady=(4, 6))
         text_widget.configure(yscrollcommand=scroll_y.set)
         scroll_x = ttk.Scrollbar(parent, orient="horizontal", command=text_widget.xview)
-        scroll_x.grid(row=1, column=0, sticky="ew", padx=10)
+        scroll_x.grid(row=1, column=0, sticky="ew", padx=8)
         text_widget.configure(xscrollcommand=scroll_x.set)
         buttons = ttk.Frame(parent)
-        buttons.grid(row=2, column=0, sticky="e", padx=10, pady=(0, 10))
+        buttons.grid(row=2, column=0, sticky="e", padx=8, pady=(2, 8))
         if info["path"]:
             status_text = f"Loaded from {info['path'].name}"
         else:
-            status_text = f"New file (will save to {info['expected_path'].name})"
+            status_text = f"Saving to {info['expected_path'].name}"
         status_label = ttk.Label(buttons, text=status_text)
         status_label.pack(side="left", padx=(0, 10))
         ttk.Button(buttons, text="Discard Changes", command=lambda name=label: self._reset_extra_file(name)).pack(
@@ -320,9 +633,15 @@ class ConfigurationTab(ttk.Frame):
         info["text_widget"] = text_widget
         info["status_label"] = status_label
     def _build_structured_extra_editor(self, label: str, info: Dict[str, Any], parent: tk.Widget) -> None:
+        # Keep the toggle row compact while letting the editor stack take the excess space.
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(0, weight=0)
         parent.rowconfigure(1, weight=1)
+        parent.rowconfigure(2, weight=0)
+
+        # --- Mode toggle row (unchanged) ---
         mode_frame = ttk.Frame(parent)
-        mode_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 5))
+        mode_frame.grid(row=0, column=0, sticky="ew", padx=8, pady=(0, 2))
         mode_var = tk.StringVar(value="visual")
         info["mode_var"] = mode_var
         ttk.Label(mode_frame, text="Edit Mode:").pack(side="left")
@@ -340,30 +659,74 @@ class ConfigurationTab(ttk.Frame):
             variable=mode_var,
             command=lambda name=label: self._handle_extra_mode_change(name),
         ).pack(side="left")
-        visual_frame = ttk.Frame(parent)
-        visual_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=5)
-        visual_frame.columnconfigure(0, weight=1)
+
+        # --- STACK that owns the space for both editors (prevents layout jump) ---
+        editor_stack = ttk.Frame(parent)
+        editor_stack.grid(row=1, column=0, sticky="nsew", padx=8, pady=0 )
+        editor_stack.columnconfigure(0, weight=1)
+        editor_stack.rowconfigure(0, weight=1)
+        info["editor_stack"] = editor_stack
+
+        # --- Visual editor (scrollable) INSIDE the stack ---
+        visual_container = ttk.Frame(editor_stack)
+        visual_container.grid(row=0, column=0, sticky="nsew")
+        visual_container.columnconfigure(0, weight=1)
+        visual_container.rowconfigure(0, weight=1)
+
+        visual_canvas = tk.Canvas(visual_container, highlightthickness=0, borderwidth=0)
+        visual_canvas.grid(row=0, column=0, sticky="nsew", pady=0)
+
+        vsb = ttk.Scrollbar(visual_container, orient="vertical", command=visual_canvas.yview)
+        vsb.grid(row=0, column=1, sticky="ns")
+        visual_canvas.configure(yscrollcommand=vsb.set)
+
+        visual_frame = ttk.Frame(visual_canvas)
+        inner_id = visual_canvas.create_window((0, 0), window=visual_frame, anchor="nw")
+
+        # Scroll region follows content
+        def _on_inner_config(_event):
+            visual_canvas.configure(scrollregion=visual_canvas.bbox("all"))
+        visual_frame.bind("<Configure>", _on_inner_config)
+
+        # Inner frame width tracks canvas width
+        def _on_canvas_config(event):
+            visual_canvas.itemconfigure(inner_id, width=event.width)
+        visual_canvas.bind("<Configure>", _on_canvas_config)
+
+        info["visual_container"] = visual_container
+        info["visual_canvas"] = visual_canvas
         info["visual_frame"] = visual_frame
-        raw_frame = ttk.Frame(parent)
-        raw_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=5)
+
+        # Optional: mousewheel
+        if hasattr(self, "_enable_mousewheel"):
+            self._enable_mousewheel(visual_canvas)
+
+        # --- Raw editor INSIDE the stack (same grid cell) ---
+        raw_frame = ttk.Frame(editor_stack)
+        raw_frame.grid(row=0, column=0, sticky="nsew")
         info["raw_frame"] = raw_frame
+
         text_widget = tk.Text(raw_frame, wrap="none", font=("Courier New", 10))
         text_widget.grid(row=0, column=0, sticky="nsew")
         raw_frame.rowconfigure(0, weight=1)
         raw_frame.columnconfigure(0, weight=1)
+
         baseline = info.get("baseline") or self._serialize_sections_for_kind(info.get("kind"), info.get("sections"))
         text_widget.insert("1.0", baseline)
         text_widget.bind("<KeyRelease>", lambda _event, name=label: self._mark_extra_dirty(name))
         info["text_widget"] = text_widget
+
         scroll_y = ttk.Scrollbar(raw_frame, orient="vertical", command=text_widget.yview)
         scroll_y.grid(row=0, column=1, sticky="ns")
         text_widget.configure(yscrollcommand=scroll_y.set)
         scroll_x = ttk.Scrollbar(raw_frame, orient="horizontal", command=text_widget.xview)
         scroll_x.grid(row=1, column=0, sticky="ew")
         text_widget.configure(xscrollcommand=scroll_x.set)
+
+        # --- Bottom buttons (outside the stack, fixed position) ---
         buttons = ttk.Frame(parent)
         buttons.grid(row=2, column=0, sticky="e", padx=10, pady=(0, 10))
-        status_text = f"Loaded from {info['path'].name}" if info["path"] else f"New file (will save to {info['expected_path'].name})"
+        status_text = f"Loaded from {info['path'].name}" if info["path"] else f"Saving to {info['expected_path'].name}"
         status_label = ttk.Label(buttons, text=status_text)
         status_label.pack(side="left", padx=(0, 10))
         info["status_label"] = status_label
@@ -371,8 +734,11 @@ class ConfigurationTab(ttk.Frame):
             side="right", padx=6
         )
         ttk.Button(buttons, text="Save", command=lambda name=label: self._save_extra_file(name)).pack(side="right")
+
+        # Build visual controls & select the starting mode
         self._render_extra_visual_sections(label, info)
         self._handle_extra_mode_change(label, initial=True)
+
     def _render_extra_visual_sections(self, label: str, info: Dict[str, Any]) -> None:
         frame = info.get("visual_frame")
         if frame is None:
@@ -384,11 +750,16 @@ class ConfigurationTab(ttk.Frame):
             section_frame = ttk.LabelFrame(
                 frame, text=section.get("displayName", section.get("name", f"Section {s_index + 1}"))
             )
-            section_frame.pack(fill="x", pady=5)
+            section_frame.pack(fill="x", pady=(6, 6))
+            section_frame.configure(padding=(6, 4))
             for p_index, param in enumerate(section.get("parameters", [])):
                 row = ttk.Frame(section_frame)
                 row.pack(fill="x", pady=2, padx=6)
-                ttk.Label(row, text=param.get("description") or param["key"]).pack(side="left")
+                row.columnconfigure(1, weight=0)
+                row.columnconfigure(2, weight=1)
+                label_text = param.get("label") or param["key"].replace("_", " ")
+                ttk.Label(row, text=label_text).grid(row=0, column=0, sticky="w", padx=(0, 6))
+                desc_text = (param.get("description") or "").strip()
                 param_type = param.get("type", "string")
                 ctrl_info: Dict[str, Any] = {
                     "section_index": s_index,
@@ -404,16 +775,16 @@ class ConfigurationTab(ttk.Frame):
                         variable=var,
                         command=lambda name=label: self._on_extra_param_changed(name),
                     )
-                    widget.pack(side="right")
+                    widget.grid(row=0, column=1, sticky="ew", padx=(0, 6))
                 elif param_type == "array":
-                    widget = tk.Text(row, height=4, width=60, wrap="word")
+                    widget = tk.Text(row, height=3, width=32, wrap="word")
                     value = param.get("value")
                     if isinstance(value, (list, dict)):
                         display = json.dumps(value, ensure_ascii=False, indent=2)
                     else:
                         display = "" if value is None else str(value)
                     widget.insert("1.0", display)
-                    widget.pack(side="right", fill="x", expand=True)
+                    widget.grid(row=0, column=1, sticky="w", padx=(0, 6))
                     widget.bind(
                         "<KeyRelease>",
                         lambda _event, name=label: self._on_extra_param_changed(name),
@@ -423,11 +794,19 @@ class ConfigurationTab(ttk.Frame):
                     value = "" if param.get("value") is None else str(param.get("value"))
                     var = tk.StringVar(value=value)
                     ctrl_info["var"] = var
-                    entry = ttk.Entry(row, textvariable=var, width=40)
-                    entry.pack(side="right", fill="x", expand=True)
+                    entry = ttk.Entry(row, textvariable=var, width=20)
+                    entry.grid(row=0, column=1, sticky="w", padx=(0, 6))
                     var.trace_add("write", lambda *_args, name=label: self._on_extra_param_changed(name))
                     ctrl_info["widget"] = entry
+                if desc_text:
+                    ttk.Label(row, text=desc_text, wraplength=240, justify="left").grid(
+                        row=0, column=2, sticky="nw", padx=(6, 0)
+                    )
                 info["param_controls"].append(ctrl_info)
+        canvas = info.get("visual_canvas")
+        if canvas:
+            canvas.update_idletasks()
+            canvas.yview_moveto(0.0)
     def _on_extra_param_changed(self, label: str) -> None:
         self._update_extra_sections_from_controls(label)
         self._mark_extra_dirty(label)
@@ -540,27 +919,45 @@ class ConfigurationTab(ttk.Frame):
         info = self.extra_files.get(label)
         if not info:
             return
+
         mode_var: Optional[tk.StringVar] = info.get("mode_var")
         if mode_var is None:
             return
+
         mode = mode_var.get()
-        visual_frame = info.get("visual_frame")
+        visual_container = info.get("visual_container")
         raw_frame = info.get("raw_frame")
+        visual_canvas = info.get("visual_canvas")
+
         if mode == "visual":
+            # Hide raw, show visual (inside the editor_stack at row=0,col=0)
             if raw_frame is not None:
                 raw_frame.grid_remove()
+
             if not initial:
+                # Pull YAML -> sections so visual is current
                 if not self._sync_extra_text_to_visual(label):
                     mode_var.set("raw")
                     return
-            if visual_frame is not None:
-                visual_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=5)
+
+            if visual_container is not None:
+                visual_container.grid(row=0, column=0, sticky="nsew")
+
+            # Reset scroll to the very top to avoid any top gap
+            if visual_canvas is not None:
+                visual_canvas.update_idletasks()
+                visual_canvas.yview_moveto(0.0)
+
         else:
-            if visual_frame is not None:
-                visual_frame.grid_remove()
+            # Hide visual, show raw
+            if visual_container is not None:
+                visual_container.grid_remove()
+
+            # Push sections -> YAML text so raw is current
             self._sync_extra_visual_to_text(label)
+
             if raw_frame is not None:
-                raw_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=5)
+                raw_frame.grid(row=0, column=0, sticky="nsew")
     def _extra_sections_to_yaml(self, sections: Optional[List[Dict[str, Any]]]) -> str:
         data: Dict[str, Any] = {}
         if not sections:
@@ -744,7 +1141,7 @@ class ConfigurationTab(ttk.Frame):
             else:
                 expected = info.get("expected_path")
                 name = expected.name if isinstance(expected, Path) else "file"
-                status_label.configure(text=f"New file (will save to {name})")
+                status_label.configure(text=f"Saving to {name}")
         if kind == "config_snakemake":
             app = self.master.master
             if hasattr(app, "run_tab"):
@@ -805,39 +1202,49 @@ class ConfigurationTab(ttk.Frame):
         ttk.Label(self.param_inner, text=header, font=("Segoe UI", 12, "bold")).grid(
             row=0, column=0, sticky="w", pady=(0, 6)
         )
-        for row_index, param in enumerate(section.get("parameters", []), start=1):
+        self.param_inner.columnconfigure(1, weight=1)
+        row_pointer = 1
+        for idx, param in enumerate(section.get("parameters", [])):
+            description = param.get("description")
+            if description:
+                ttk.Label(
+                    self.param_inner,
+                    text=description,
+                    foreground="#555555",
+                    wraplength=420,
+                    anchor="w",
+                    justify="left",
+                ).grid(row=row_pointer, column=0, columnspan=3, sticky="w", padx=(0, 8), pady=(0, 2))
+                row_pointer += 1
             key = param["key"]
             value_type = param.get("type", "string")
-            ttk.Label(self.param_inner, text=key).grid(row=row_index, column=0, sticky="w", padx=(0, 10), pady=2)
+            ttk.Label(self.param_inner, text=key).grid(row=row_pointer, column=0, sticky="w", padx=(0, 10), pady=2)
             if value_type == "boolean":
                 var = tk.BooleanVar(value=bool(param.get("value")))
                 widget = ttk.Checkbutton(
                     self.param_inner,
                     variable=var,
-                    command=lambda idx=row_index - 1: self._on_param_toggle(section_index, idx),
+                    command=lambda idx=idx: self._on_param_toggle(section_index, idx),
                 )
-                widget.grid(row=row_index, column=1, sticky="w")
-                self.param_vars[(section_index, row_index - 1)] = var
+                widget.grid(row=row_pointer, column=1, sticky="w")
+                self.param_vars[(section_index, idx)] = var
             else:
-                initial = str(param.get("value", "")) if value_type != "number" else str(param.get("value", 0))
+                initial = (
+                    str(param.get("value", "")) if value_type != "number" else str(param.get("value", 0))
+                )
                 var = tk.StringVar(value=initial)
                 entry = ttk.Entry(self.param_inner, textvariable=var, width=40)
-                entry.grid(row=row_index, column=1, sticky="ew")
-                self.param_inner.columnconfigure(1, weight=1)
+                entry.grid(row=row_pointer, column=1, sticky="ew")
                 var.trace_add(
                     "write",
                     lambda *_,
                     s_index=section_index,
-                    p_index=row_index - 1,
+                    p_index=idx,
                     v_type=value_type,
                     variable=var: self._on_param_change(s_index, p_index, v_type, variable),
                 )
-                self.param_vars[(section_index, row_index - 1)] = var
-            description = param.get("description")
-            if description:
-                ttk.Label(self.param_inner, text=description, foreground="#555555").grid(
-                    row=row_index, column=2, sticky="w", padx=6
-                )
+                self.param_vars[(section_index, idx)] = var
+            row_pointer += 1
     def _on_param_toggle(self, section_index: int, param_index: int) -> None:
         var = self.param_vars.get((section_index, param_index))
         if not var:
@@ -975,6 +1382,22 @@ class ConfigurationTab(ttk.Frame):
     def snakefile_has_unsaved_changes(self) -> bool:
         """Indicate whether the Snakefile has unsaved edits."""
         return self.snakefile_dirty
+    def _enable_mousewheel(self, canvas: tk.Canvas) -> None:
+        """Enable cross-platform mousewheel scrolling on a Canvas."""
+        import sys
+
+        def _on_mousewheel(event):
+            # Windows / macOS use <MouseWheel>
+            delta = -1 if sys.platform == "darwin" else int(-event.delta / 120)
+            canvas.yview_scroll(delta, "units")
+
+        # Bindings for Windows/macOS
+        canvas.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _on_mousewheel))
+        canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
+
+        # Bindings for Linux (X11)
+        canvas.bind_all("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))
+        canvas.bind_all("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))
 class ProcessRunner:
     """Run subprocesses on a background thread and stream output back to Tk."""
     def __init__(self) -> None:
@@ -1010,6 +1433,7 @@ class ProcessRunner:
             popen_kwargs: Dict[str, Any] = {
                 "stdout": subprocess.PIPE,
                 "stderr": subprocess.PIPE,
+                "stdin": subprocess.PIPE,
                 "text": True,
                 "bufsize": 1,
                 "universal_newlines": True,
@@ -1068,6 +1492,18 @@ class ProcessRunner:
             return self.process is not None
     def stop_requested(self) -> bool:
         return self._stopping
+    def send_input(self, data: str) -> None:
+        with self._lock:
+            proc = self.process
+            stdin = proc.stdin if proc else None  # type: ignore[assignment]
+        if not proc or not stdin:
+            raise RuntimeError("Process is not running")
+        text = data if data.endswith("\n") else f"{data}\n"
+        try:
+            stdin.write(text)
+            stdin.flush()
+        except Exception as exc:  # pragma: no cover - interactive fallback
+            raise RuntimeError(f"Failed to send input: {exc}") from exc
     def _start_reader(self, stream: Any, level: str) -> None:
         def _reader() -> None:
             for raw_line in iter(stream.readline, ""):
@@ -1124,7 +1560,7 @@ class ProcessRunner:
             self.process = None
         if not proc:
             return
-        for stream in (proc.stdout, proc.stderr):
+        for stream in (proc.stdout, proc.stderr, proc.stdin):
             if stream:
                 try:
                     stream.close()
@@ -1132,13 +1568,14 @@ class ProcessRunner:
                     pass
 class RunTab(ttk.Frame):
     """Execution tab that runs real commands and streams output."""
-    def __init__(self, master: tk.Widget, config_tab: ConfigurationTab):
+    def __init__(self, master: tk.Widget, config_tab: ConfigurationTab, results_tab: ResultsTab):
         super().__init__(master)
         self.config_tab = config_tab
+        self.results_tab = results_tab
         self.status = "idle"
         self.progress = tk.DoubleVar(value=0)
         self.execution_mode = tk.StringVar(value="single")
-        self.selected_script = tk.StringVar(value="spatial_data_prep")
+        self.selected_script = tk.StringVar(value="results_analysis")
         self.start_time: Optional[float] = None
         self.end_time: Optional[float] = None
         self.after_id: Optional[str] = None
@@ -1149,9 +1586,12 @@ class RunTab(ttk.Frame):
         self.snakemake_file_var = tk.StringVar()
         self.snakemake_cores_var = tk.IntVar()
         self.available_scripts = [
+            {"id": "results_analysis", "name": "results_analysis.py", "description": "Generate aggregated results"},
             {"id": "spatial_data_prep", "name": "spatial_data_prep.py", "description": "Prepare spatial datasets"},
             {"id": "exclusion", "name": "exclusion.py", "description": "Run exclusion analysis"},
         ]
+        self.expected_output_dir: Optional[Path] = None
+        self.last_run_script_id: Optional[str] = None
         self._build_ui()
     def _build_ui(self) -> None:
         self.columnconfigure(0, weight=1)
@@ -1290,6 +1730,24 @@ class RunTab(ttk.Frame):
         self.log_text.configure(state="normal")
         self.log_text.delete("1.0", "end")
         self.log_text.configure(state="disabled")
+    def _resolve_results_json_path(self) -> Path:
+        base_dir = self.expected_output_dir or PARENT_DIR
+        json_path = base_dir / "aggregated_available_land.json"
+        try:
+            return json_path.resolve()
+        except Exception:
+            return json_path
+    def _update_results_tab_with_json(self) -> None:
+        if self.last_run_script_id != "results_analysis":
+            return
+        json_path = self._resolve_results_json_path()
+        status, message, _ = self.results_tab.display_aggregated_json(json_path)
+        if status == "success":
+            self.add_log("info", message)
+        elif status in {"missing", "empty"}:
+            self.add_log("warning", message)
+        else:
+            self.add_log("error", message)
     def _start_duration_timer(self) -> None:
         self._cancel_duration_timer()
         if self.status == "running":
@@ -1414,6 +1872,7 @@ class RunTab(ttk.Frame):
             self.status = "completed"
             self.progress.set(100)
             self.add_log("success", "Process completed successfully.")
+            self._update_results_tab_with_json()
             self._update_status_labels()
             messagebox.showinfo("Execution Complete", "Process finished successfully.")
         else:
@@ -1428,6 +1887,8 @@ class RunTab(ttk.Frame):
             self._update_status_labels()
         self.stop_requested = False
         self.reset_requested = False
+        self.last_run_script_id = None
+        self.expected_output_dir = None
     def _finalize_reset(self) -> None:
         self.runner.cancel()
         self._stop_spinner()
@@ -1444,11 +1905,16 @@ class RunTab(ttk.Frame):
     def handle_run(self) -> None:
         if self.runner.is_running():
             return
+        self.expected_output_dir = None
+        self.last_run_script_id = None
         mode = self.execution_mode.get()
+        script_id: Optional[str] = None
         try:
             if mode == "snakemake":
                 cmd, cwd, temp_path = self._build_snakemake_command()
+                script_id = "snakemake"
             else:
+                script_id = self.selected_script.get()
                 cmd, cwd = self._build_single_command()
                 temp_path = None
         except (FileNotFoundError, RuntimeError) as exc:
@@ -1456,6 +1922,10 @@ class RunTab(ttk.Frame):
             self.add_log("error", message)
             messagebox.showerror("Execution Error", message)
             return
+        self.expected_output_dir = cwd
+        self.last_run_script_id = script_id
+        if script_id == "results_analysis":
+            self.results_tab.clear_aggregated_results()
         self.temp_snakefile_path = temp_path
         self.stop_requested = False
         self.reset_requested = False
@@ -1489,6 +1959,8 @@ class RunTab(ttk.Frame):
             self._cleanup_temp_snakefile()
             self.stop_requested = False
             self.reset_requested = False
+            self.last_run_script_id = None
+            self.expected_output_dir = None
     def handle_stop(self) -> None:
         if not self.runner.is_running():
             return
@@ -1508,263 +1980,905 @@ class RunTab(ttk.Frame):
             self.runner.stop()
             return
         self._finalize_reset()
-class ResultsTab(ttk.Frame):
-    """Results visualization tab."""
-    def __init__(self, master: tk.Widget, initial_data: Dict[str, Any]):
+
+
+class MapTab(ttk.Frame):
+    MAX_LAYERS = 3
+    FILETYPES = [
+        ("Supported files", "*.tif *.tiff *.geojson"),
+        ("GeoTIFF", "*.tif *.tiff"),
+        ("GeoJSON", "*.geojson"),
+    ]
+
+    def __init__(self, master: tk.Widget):
         super().__init__(master)
-        self.results_data = deepcopy(initial_data) if initial_data else deepcopy(DEFAULT_RESULTS_DATA)
-        self.json_visible = False
+        self.file_vars = [tk.StringVar() for _ in range(self.MAX_LAYERS)]
+        self.layer_order = [tk.StringVar(value=str(i + 1)) for i in range(self.MAX_LAYERS)]
+        self.layer_opacity = [tk.DoubleVar(value=0.7) for _ in range(self.MAX_LAYERS)]
+        self.layer_names = [tk.StringVar(value="") for _ in range(self.MAX_LAYERS)]
+        self._map_dir: Optional[Path] = None
+        self._map_view: Optional[Dict[str, Any]] = None
+        self.status_var = tk.StringVar(value="")
+        self._status_palette = {
+            "info": "#0d5d9b",
+            "warning": "#a66b00",
+            "error": "#b42318",
+            "success": "#1a7f37",
+        }
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(2, weight=1)
-        self._build_controls()
-        self._build_tabs()
-        self._populate_all()
-    def _build_controls(self) -> None:
-        header = ttk.Frame(self)
-        header.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
-        header.columnconfigure(0, weight=1)
-        ttk.Label(header, text="Results Explorer", font=("Segoe UI", 14, "bold")).grid(row=0, column=0, sticky="w")
-        button_row = ttk.Frame(header)
-        button_row.grid(row=1, column=0, sticky="w", pady=(6, 0))
-        ttk.Button(button_row, text="Load JSON...", command=self._load_json_file).pack(side="left", padx=(0, 6))
-        ttk.Button(button_row, text="Paste JSON", command=self._toggle_json_input).pack(side="left", padx=(0, 6))
-        ttk.Button(button_row, text="Reset to defaults", command=self._reset_results).pack(side="left")
-        self.json_frame = ttk.Frame(self)
-        self.json_frame.grid(row=1, column=0, sticky="ew", padx=10)
-        self.json_frame.columnconfigure(0, weight=1)
-        self.json_text = tk.Text(self.json_frame, height=6, wrap="word")
-        self.json_text.grid(row=0, column=0, sticky="ew")
-        ttk.Button(self.json_frame, text="Apply JSON", command=self._apply_json_text).grid(row=0, column=1, padx=(6, 0))
-        self.json_frame.grid_remove()
-    def _build_tabs(self) -> None:
-        self.tabs = ttk.Notebook(self)
-        self.tabs.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 10))
-        self.summary_tab = ttk.Frame(self.tabs)
-        self.summary_tab.columnconfigure(0, weight=1)
-        self.tabs.add(self.summary_tab, text="Summary")
-        columns = ("metric", "value", "change")
-        self.summary_tree = ttk.Treeview(self.summary_tab, columns=columns, show="headings", height=8)
-        for col in columns:
-            self.summary_tree.heading(col, text=col.title())
-            self.summary_tree.column(col, anchor="w", width=200)
-        self.summary_tree.grid(row=0, column=0, sticky="nsew")
-        summary_scroll = ttk.Scrollbar(self.summary_tab, orient="vertical", command=self.summary_tree.yview)
-        summary_scroll.grid(row=0, column=1, sticky="ns")
-        self.summary_tree.configure(yscrollcommand=summary_scroll.set)
-        self.charts_tab = ttk.Frame(self.tabs)
-        self.charts_tab.columnconfigure(0, weight=1)
-        self.charts_tab.rowconfigure(0, weight=1)
-        self.tabs.add(self.charts_tab, text="Charts")
-        if MATPLOTLIB_AVAILABLE:
-            self.figure = Figure(figsize=(6, 4), dpi=100)
-            self.ax_bar = self.figure.add_subplot(211)
-            self.ax_line = self.figure.add_subplot(212)
-            self.figure.tight_layout(pad=2.0)
-            self.chart_canvas = FigureCanvasTkAgg(self.figure, master=self.charts_tab)
-            self.chart_canvas.draw()
-            self.chart_canvas.get_tk_widget().grid(row=0, column=0, sticky="nsew")
-        else:
-            ttk.Label(
-                self.charts_tab,
-                text="Install matplotlib to view charts.\nRun `pip install matplotlib`.",
-                foreground="#555555",
-                justify="center",
-            ).grid(row=0, column=0, sticky="nsew", pady=40)
-        self.details_tab = ttk.Frame(self.tabs)
-        self.tabs.add(self.details_tab, text="Details")
-        self.details_tab.columnconfigure(0, weight=1)
-        self.details_tab.rowconfigure(0, weight=1)
-        self.details_tree = ttk.Treeview(self.details_tab, show="headings")
-        self.details_tree.grid(row=0, column=0, sticky="nsew")
-        details_scroll = ttk.Scrollbar(self.details_tab, orient="vertical", command=self.details_tree.yview)
-        details_scroll.grid(row=0, column=1, sticky="ns")
-        self.details_tree.configure(yscrollcommand=details_scroll.set)
-        self.files_tab = ttk.Frame(self.tabs)
-        self.tabs.add(self.files_tab, text="Output Files")
-        self.files_tab.columnconfigure(0, weight=1)
-        self.files_container = ttk.Frame(self.files_tab)
-        self.files_container.grid(row=0, column=0, sticky="nsew")
-        self.files_tab.rowconfigure(0, weight=1)
-        self.custom_tab = ttk.Frame(self.tabs)
-        self.tabs.add(self.custom_tab, text="Custom Graphs")
-        self.custom_tab.columnconfigure(0, weight=1)
-        self.custom_tab.rowconfigure(0, weight=1)
-        self.custom_canvas: Optional[FigureCanvasTkAgg] = None
-        if MATPLOTLIB_AVAILABLE:
-            self.custom_figure = Figure(figsize=(6, 4), dpi=100)
-            self.custom_ax = self.custom_figure.add_subplot(111)
-            self.custom_canvas = FigureCanvasTkAgg(self.custom_figure, master=self.custom_tab)
-            self.custom_canvas.get_tk_widget().grid(row=0, column=0, sticky="nsew")
-        else:
-            ttk.Label(
-                self.custom_tab,
-                text="Install matplotlib to display custom graphs.",
-                foreground="#555555",
-            ).grid(row=0, column=0, sticky="nsew", pady=40)
-    def _populate_all(self) -> None:
-        self._populate_summary()
-        self._populate_charts()
-        self._populate_details()
-        self._populate_files()
-        self._populate_custom_graphs()
-    def _populate_summary(self) -> None:
-        self.summary_tree.delete(*self.summary_tree.get_children())
-        for row in self.results_data.get("summary", []):
-            self.summary_tree.insert("", "end", values=(row.get("metric"), row.get("value"), row.get("change", "")))
-    def _populate_charts(self) -> None:
-        if not MATPLOTLIB_AVAILABLE:
-            return
-        chart_data = self.results_data.get("chartData", [])
-        names = [item.get("name", "") for item in chart_data]
-        processed = [item.get("processed", 0) for item in chart_data]
-        time_values = [item.get("time", 0) for item in chart_data]
-        self.ax_bar.clear()
-        self.ax_line.clear()
-        self.ax_bar.bar(names, processed, color="#2e6f9e")
-        self.ax_bar.set_ylabel("Processed")
-        self.ax_bar.set_title("Processed Records by Batch")
-        self.ax_bar.grid(axis="y", linestyle=":", alpha=0.5)
-        self.ax_line.plot(names, time_values, marker="o", color="#a23c3d")
-        self.ax_line.set_ylabel("Time (s)")
-        self.ax_line.set_title("Processing Time")
-        self.ax_line.grid(axis="both", linestyle=":", alpha=0.5)
-        self.figure.tight_layout(pad=2.0)
-        self.chart_canvas.draw()
-    def _populate_details(self) -> None:
-        self.details_tree.delete(*self.details_tree.get_children())
-        columns = self.results_data.get("detailedResultsColumns", [])
-        if not columns:
-            self.details_tree["columns"] = ("message",)
-            self.details_tree.heading("message", text="Message")
-            self.details_tree.column("message", width=400, anchor="w")
-            self.details_tree.insert("", "end", values=("No detailed results available.",))
-            return
-        self.details_tree["columns"] = columns
-        for col in columns:
-            self.details_tree.heading(col, text=col.title())
-            self.details_tree.column(col, width=120, anchor="center")
-        for row in self.results_data.get("detailedResults", []):
-            values = [row.get(col, "") for col in columns]
-            self.details_tree.insert("", "end", values=values)
-    def _populate_files(self) -> None:
-        for child in self.files_container.winfo_children():
-            child.destroy()
-        files = self.results_data.get("outputFiles", [])
-        if not files:
-            ttk.Label(self.files_container, text="No output files available.", foreground="#555555").pack(pady=20)
-            return
-        for file in files:
-            card = ttk.Frame(self.files_container, padding=10, relief="groove")
-            card.pack(fill="x", pady=4)
-            ttk.Label(card, text=file.get("name"), font=("Segoe UI", 11, "bold")).pack(anchor="w")
-            meta = f"{file.get('size')} • {file.get('records')} records • Created {file.get('created')}"
-            ttk.Label(card, text=meta, foreground="#555555").pack(anchor="w", pady=(2, 4))
-            ttk.Button(card, text="Download", command=lambda name=file.get("name"): self._simulate_download(name)).pack(
-                anchor="e"
+        self.rowconfigure(3, weight=1)
+        self._build_ui()
+        self.bind("<Destroy>", self._on_destroy)
+
+    def _build_ui(self) -> None:
+        selection = ttk.LabelFrame(self, text="Layer Selection")
+        selection.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
+        for col in (1, 5, 7):
+            selection.columnconfigure(col, weight=1)
+        for idx in range(self.MAX_LAYERS):
+            ttk.Label(selection, text=f"Layer {idx + 1}:").grid(
+                row=idx, column=0, sticky="w", pady=2, padx=(0, 6)
             )
-    def _populate_custom_graphs(self) -> None:
-        if not MATPLOTLIB_AVAILABLE or not self.custom_canvas:
-            return
-        self.custom_ax.clear()
-        graphs = self.results_data.get("customGraphs", [])
-        if not graphs:
-            self.custom_ax.text(0.5, 0.5, "No custom graph data", ha="center", va="center")
-            self.custom_canvas.draw()
-            return
-        graph = graphs[0]
-        graph_type = graph.get("type")
-        data = graph.get("data", [])
-        x_key = graph.get("xKey")
-        self.custom_ax.set_title(graph.get("title", "Custom Graph"))
-        if graph_type == "bar":
-            y_keys = graph.get("yKeys", [])
-            for idx, y_key in enumerate(y_keys):
-                values = [item.get(y_key, 0) for item in data]
-                positions = [i + idx * 0.2 for i in range(len(data))]
-                self.custom_ax.bar(positions, values, width=0.2, label=y_key)
-            self.custom_ax.set_xticks(range(len(data)))
-            self.custom_ax.set_xticklabels([item.get(x_key, "") for item in data])
-        elif graph_type == "line":
-            for y_key in graph.get("yKeys", []):
-                values = [item.get(y_key, 0) for item in data]
-                self.custom_ax.plot([item.get(x_key, "") for item in data], values, marker="o", label=y_key)
-        elif graph_type == "pie":
-            labels = [item.get(graph.get("nameKey", ""), "") for item in data]
-            values = [item.get(graph.get("dataKey", ""), 0) for item in data]
-            self.custom_ax.pie(values, labels=labels, autopct="%1.1f%%")
-        else:  # default to area
-            y_key = (graph.get("yKeys") or ["value"])[0]
-            values = [item.get(y_key, 0) for item in data]
-            self.custom_ax.fill_between(range(len(values)), values, alpha=0.3)
-            self.custom_ax.plot(range(len(values)), values, marker="o")
-            self.custom_ax.set_xticks(range(len(data)))
-            self.custom_ax.set_xticklabels([item.get(x_key, "") for item in data])
-        if graph_type in ("bar", "line"):
-            self.custom_ax.legend()
-        self.custom_ax.grid(True, linestyle=":", alpha=0.4)
-        self.custom_canvas.draw()
-    def _toggle_json_input(self) -> None:
-        self.json_visible = not self.json_visible
-        if self.json_visible:
-            self.json_frame.grid()
-        else:
-            self.json_frame.grid_remove()
-    def _load_json_file(self) -> None:
-        filename = filedialog.askopenfilename(
-            title="Select JSON results file", filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            entry = ttk.Entry(selection, textvariable=self.file_vars[idx])
+            entry.grid(row=idx, column=1, sticky="ew", pady=2)
+            ttk.Button(selection, text="Browse", command=lambda i=idx: self._browse(i)).grid(
+                row=idx, column=2, padx=(6, 0), pady=2
+            )
+            ttk.Button(selection, text="Clear", command=lambda i=idx: self._clear(i)).grid(
+                row=idx, column=3, padx=(6, 0), pady=2
+            )
+            ttk.Label(selection, text="Display Name:").grid(
+                row=idx, column=4, sticky="e", padx=(12, 4)
+            )
+            ttk.Entry(selection, textvariable=self.layer_names[idx], width=18).grid(
+                row=idx, column=5, sticky="ew", pady=2
+            )
+            ttk.Label(selection, text="Opacity:").grid(
+                row=idx, column=6, sticky="e", padx=(12, 4)
+            )
+            ttk.Scale(selection, variable=self.layer_opacity[idx], from_=0.1, to=1.0, orient="horizontal").grid(
+                row=idx, column=7, sticky="ew", pady=2
+            )
+            ttk.Label(selection, text="Order:").grid(
+                row=idx, column=8, sticky="e", padx=(12, 4)
+            )
+            order_combo = ttk.Combobox(
+                selection,
+                textvariable=self.layer_order[idx],
+                values=[str(i) for i in range(1, self.MAX_LAYERS + 1)],
+                state="readonly",
+                width=5,
+            )
+            order_combo.grid(row=idx, column=9, sticky="w")
+            order_combo.current(idx)
+
+        buttons = ttk.Frame(self)
+        buttons.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 5))
+        ttk.Button(buttons, text="Load Map", command=self._load).pack(side="left")
+        ttk.Button(buttons, text="Clear All", command=self._clear_all).pack(side="left", padx=(6, 0))
+
+        self.status_label = ttk.Label(
+            self, textvariable=self.status_var, wraplength=540, justify="left", foreground="#0d5d9b"
         )
-        if not filename:
-            return
-        try:
-            data = json.loads(Path(filename).read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            messagebox.showerror("Invalid JSON", f"Could not load JSON:\n{exc}")
-            return
-        if not isinstance(data, dict):
-            messagebox.showerror("Invalid JSON", "Expected an object at the top level.")
-            return
-        self.results_data = data
-        self._populate_all()
-        messagebox.showinfo("Results Loaded", f"Loaded results from {filename}")
-    def _apply_json_text(self) -> None:
-        raw_text = self.json_text.get("1.0", "end-1c")
-        if not raw_text.strip():
-            return
-        try:
-            data = json.loads(raw_text)
-        except json.JSONDecodeError as exc:
-            messagebox.showerror("Invalid JSON", f"Could not parse JSON:\n{exc}")
-            return
-        if not isinstance(data, dict):
-            messagebox.showerror("Invalid JSON", "Expected an object at the top level.")
-            return
-        self.results_data = data
-        self._populate_all()
-        messagebox.showinfo("Results Updated", "Results updated from JSON input.")
-    def _reset_results(self) -> None:
-        self.results_data = deepcopy(DEFAULT_RESULTS_DATA)
-        self._populate_all()
-    def _simulate_download(self, filename: Optional[str]) -> None:
-        if not filename:
-            messagebox.showinfo("Download", "File ready for download.")
+        self.status_label.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 5))
+
+        map_and_legend = ttk.Frame(self)
+        map_and_legend.grid(row=3, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        map_and_legend.columnconfigure(0, weight=3)
+        map_and_legend.columnconfigure(1, weight=1)
+        map_and_legend.rowconfigure(0, weight=1)
+
+        self.map_container = ttk.Frame(map_and_legend)
+        self.map_container.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+        self.map_container.columnconfigure(0, weight=1)
+        self.map_container.rowconfigure(0, weight=1)
+
+        legend_frame = ttk.LabelFrame(map_and_legend, text="Legend")
+        legend_frame.grid(row=0, column=1, sticky="nsew")
+        legend_frame.columnconfigure(0, weight=1)
+        legend_frame.rowconfigure(0, weight=1)
+        self.legend_text = tk.Text(legend_frame, height=10, wrap="word")
+        self.legend_text.grid(row=0, column=0, sticky="nsew")
+        legend_scroll = ttk.Scrollbar(legend_frame, orient="vertical", command=self.legend_text.yview)
+        legend_scroll.grid(row=0, column=1, sticky="ns")
+        self.legend_text.configure(yscrollcommand=legend_scroll.set)
+        ttk.Label(
+            legend_frame,
+            text="Enter HTML or plain text for legend (optional).",
+            foreground="#555555",
+        ).grid(row=1, column=0, columnspan=2, sticky="ew", pady=(4, 0))
+        self._set_status("Select up to three layers to display on the map.", "info")
+
+    def _browse(self, idx: int) -> None:
+        current_value = self.file_vars[idx].get().strip()
+        initial_dir = None
+        if current_value:
+            current_path = Path(current_value)
+            if current_path.exists():
+                initial_dir = str(current_path.parent)
+        path = filedialog.askopenfilename(
+            title="Select Layer",
+            filetypes=self.FILETYPES,
+            initialdir=initial_dir or os.getcwd(),
+        )
+        if path:
+            self.file_vars[idx].set(path)
+            if not self.layer_names[idx].get().strip():
+                self.layer_names[idx].set(Path(path).stem)
+            self._set_status(f"Selected {Path(path).name}.", "info")
+
+    def _clear(self, idx: int) -> None:
+        if self.file_vars[idx].get():
+            self.file_vars[idx].set("")
+            self.layer_names[idx].set("")
+            self._set_status(f"Cleared layer {idx + 1}.", "info")
+
+    def _clear_all(self) -> None:
+        any_cleared = False
+        legend_present = bool(self.legend_text.get("1.0", "end").strip())
+        for idx, var in enumerate(self.file_vars):
+            if var.get():
+                any_cleared = True
+            var.set("")
+            self.layer_names[idx].set("")
+            self.layer_order[idx].set(str(idx + 1))
+            self.layer_opacity[idx].set(0.7)
+        if legend_present:
+            any_cleared = True
+        self.legend_text.delete("1.0", "end")
+        self._clear_map_display()
+        self._cleanup_temp_dir()
+        if any_cleared:
+            self._set_status("Cleared all layer selections.", "info")
         else:
-            messagebox.showinfo("Download", f"Pretending to download {filename}.")
+            self._set_status("No layers to clear.", "info")
+
+    def _load(self) -> None:
+        self._set_status("Preparing map...", "info")
+        self._clear_map_display()
+        self._cleanup_temp_dir()
+        entries: List[Tuple[int, Path]] = []
+        for idx, var in enumerate(self.file_vars):
+            raw = var.get().strip()
+            if not raw:
+                continue
+            entries.append((idx, Path(raw)))
+        if not entries:
+            self._set_status("Select at least one layer before loading the map.", "warning")
+            messagebox.showwarning("Load Map", "Select at least one layer before loading the map.")
+            return
+        temp_dir = Path(tempfile.mkdtemp(prefix="map_tab_"))
+        layers: List[Dict[str, Any]] = []
+        for idx, path in entries:
+            if not path.exists():
+                self._set_status(f"File not found: {path}", "error")
+                messagebox.showerror("Load Map", f"File not found:\n{path}")
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                return
+            display_name = self.layer_names[idx].get().strip() or path.stem
+            try:
+                order_value = int(self.layer_order[idx].get())
+            except Exception:
+                order_value = idx + 1
+            order_value = max(1, min(self.MAX_LAYERS, order_value))
+            try:
+                opacity_value = float(self.layer_opacity[idx].get())
+            except Exception:
+                opacity_value = 0.7
+            opacity_value = max(0.0, min(1.0, opacity_value))
+            suffix = path.suffix.lower()
+            try:
+                if suffix in {".tif", ".tiff"}:
+                    png_path, bounds = geotiff_to_png_with_bounds(str(path), str(temp_dir))
+                    layers.append(
+                        {
+                            "type": "raster",
+                            "name": path.name,
+                            "display_name": display_name,
+                            "image_path": png_path,
+                            "bounds": bounds,
+                            "opacity": opacity_value,
+                            "order": order_value,
+                            "index": idx,
+                        }
+                    )
+                elif suffix == ".geojson":
+                    with path.open("r", encoding="utf-8") as handle:
+                        geojson_data = json.load(handle)
+                    layers.append(
+                        {
+                            "type": "geojson",
+                            "name": path.name,
+                            "display_name": display_name,
+                            "data": geojson_data,
+                            "bounds": _extract_geojson_bounds(geojson_data),
+                            "opacity": opacity_value,
+                            "order": order_value,
+                            "index": idx,
+                        }
+                    )
+                else:
+                    raise ValueError("Unsupported file type. Choose .tif, .tiff, or .geojson.")
+            except Exception as exc:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                self._set_status(f"Failed to load {path.name}: {exc}", "error")
+                messagebox.showerror("Load Map", f"Failed to load {path.name}:\n{exc}")
+                return
+        map_html = temp_dir / "map.html"
+        legend_html = self.legend_text.get("1.0", "end").strip()
+        try:
+            build_map_html(layers, str(map_html), legend_html=legend_html)
+        except Exception as exc:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            self._set_status(f"Could not build the map: {exc}", "error")
+            messagebox.showerror("Load Map", f"Could not build the map:\n{exc}")
+            return
+        self._map_dir = temp_dir
+        self._map_view = show_map_in_tk(str(map_html), self.map_container)
+        embedded = bool(self._map_view.get("embedded")) if self._map_view else False
+        if embedded:
+            self._set_status(f"Loaded {len(layers)} layer(s) in the embedded map.", "success")
+        else:
+            self._set_status(
+                f"Loaded {len(layers)} layer(s). The map opened in your browser.", "warning"
+            )
+
+    def _clear_map_display(self) -> None:
+        if self._map_view:
+            cleanup = self._map_view.get("cleanup")
+            if callable(cleanup):
+                try:
+                    cleanup()
+                except Exception:
+                    pass
+            widget = self._map_view.get("widget")
+            if widget and hasattr(widget, "winfo_exists") and widget.winfo_exists():
+                try:
+                    widget.destroy()
+                except Exception:
+                    pass
+        for child in list(self.map_container.winfo_children()):
+            try:
+                child.destroy()
+            except Exception:
+                pass
+        self._map_view = None
+
+    def _cleanup_temp_dir(self) -> None:
+        if self._map_dir and self._map_dir.exists():
+            shutil.rmtree(self._map_dir, ignore_errors=True)
+        self._map_dir = None
+
+    def _set_status(self, message: str, level: str = "info") -> None:
+        color = self._status_palette.get(level, self._status_palette["info"])
+        self.status_var.set(message)
+        self.status_label.configure(foreground=color)
+
+    def _on_destroy(self, _event: tk.Event) -> None:
+        self._clear_map_display()
+        self._cleanup_temp_dir()
+
+
+class ResultsTab(ttk.Frame):
+    """Run results_analysis and display the aggregated JSON output."""
+    def __init__(self, master: tk.Widget, _initial_data: Dict[str, Any]):
+        super().__init__(master)
+        self.runner = ProcessRunner()
+        self.delete_runner = ProcessRunner()
+        self.status = "idle"
+        self.stop_requested = False
+        self.progress = tk.DoubleVar(value=0)
+        self.start_time: Optional[float] = None
+        self.end_time: Optional[float] = None
+        self.after_id: Optional[str] = None
+        self.expected_output_dir: Optional[Path] = None
+        self.delete_status = "idle"
+        self.delete_expected_dir: Optional[Path] = None
+        self.aggregated_columns = (
+            "Scenario",
+            "Technology",
+            "Region",
+            "eligibility_share_%",
+            "available_area_km2",
+            "power_potential_TW",
+        )
+        self.aggregated_tree: Optional[ttk.Treeview] = None
+        self.aggregated_filters: Dict[str, tk.StringVar] = {}
+        self.current_aggregated_rows: List[Dict[str, Any]] = []
+        self.latest_aggregated_path: Optional[Path] = None
+        self.delete_log_text: Optional[tk.Text] = None
+        self.delete_input_var = tk.StringVar()
+        self.delete_run_button: Optional[ttk.Button] = None
+        self.delete_stop_button: Optional[ttk.Button] = None
+        self.delete_status_label: Optional[ttk.Label] = None
+        self.delete_input_entry: Optional[ttk.Entry] = None
+        self.delete_send_button: Optional[ttk.Button] = None
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+        self.notebook = ttk.Notebook(self)
+        self.notebook.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        self.analysis_tab = ttk.Frame(self.notebook)
+        self.analysis_tab.columnconfigure(0, weight=1)
+        self.analysis_tab.rowconfigure(0, weight=1)
+        self.delete_tab = ttk.Frame(self.notebook)
+        self.delete_tab.columnconfigure(0, weight=1)
+        self.delete_tab.rowconfigure(0, weight=1)
+        self.notebook.add(self.analysis_tab, text="Aggregated Results")
+        self.notebook.add(self.delete_tab, text="Delete Scenario Results")
+        self.map_tab = MapTab(self.notebook)
+        self.notebook.add(self.map_tab, text="Map")
+        self._build_analysis_tab()
+        self._build_delete_tab()
+    def _build_analysis_tab(self) -> None:
+        frame = ttk.LabelFrame(self.analysis_tab, text="Results Analysis")
+        frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(3, weight=1)
+        frame.rowconfigure(4, weight=2)
+
+        ttk.Label(
+            frame,
+            text="Run results_analysis.py and review aggregated_available_land.json",
+            font=("Segoe UI", 12, "bold"),
+        ).grid(row=0, column=0, sticky="w")
+
+        controls = ttk.Frame(frame)
+        controls.grid(row=1, column=0, sticky="ew", pady=(10, 0))
+        controls.columnconfigure(3, weight=1)
+        self.run_button = ttk.Button(controls, text="Run results_analysis.py", command=self.handle_run)
+        self.run_button.grid(row=0, column=0, padx=(0, 6))
+        self.stop_button = ttk.Button(controls, text="Stop", command=self.handle_stop, state="disabled")
+        self.stop_button.grid(row=0, column=1, padx=(0, 6))
+        self.status_label = ttk.Label(controls, text="Status: Idle")
+        self.status_label.grid(row=0, column=2, sticky="w")
+        self.duration_label = ttk.Label(controls, text="Duration: --")
+        self.duration_label.grid(row=0, column=3, sticky="e")
+
+        progress_frame = ttk.Frame(frame)
+        progress_frame.grid(row=2, column=0, sticky="ew", pady=(10, 10))
+        ttk.Label(progress_frame, text="Progress").grid(row=0, column=0, sticky="w")
+        self.progress_bar = ttk.Progressbar(
+            progress_frame, maximum=100, variable=self.progress, mode="determinate"
+        )
+        self.progress_bar.grid(row=1, column=0, sticky="ew")
+
+        log_frame = ttk.LabelFrame(frame, text="Execution Log")
+        log_frame.grid(row=3, column=0, sticky="nsew")
+        log_frame.columnconfigure(0, weight=1)
+        log_frame.rowconfigure(0, weight=1)
+        self.log_text = tk.Text(log_frame, height=8, wrap="none", state="disabled", font=("Consolas", 10))
+        self.log_text.grid(row=0, column=0, sticky="nsew")
+        log_scroll = ttk.Scrollbar(log_frame, orient="vertical", command=self.log_text.yview)
+        log_scroll.grid(row=0, column=1, sticky="ns")
+        self.log_text.configure(yscrollcommand=log_scroll.set)
+        for tag, color in {
+            "info": "#333333",
+            "success": "#1a7f37",
+            "warning": "#a66b00",
+            "error": "#b42318",
+        }.items():
+            self.log_text.tag_configure(tag, foreground=color)
+
+        results_frame = ttk.LabelFrame(
+            frame, text="Aggregated Results (aggregated_available_land.json)"
+        )
+        results_frame.grid(row=4, column=0, sticky="nsew", pady=(10, 0))
+        results_frame.columnconfigure(0, weight=1)
+        results_frame.rowconfigure(1, weight=1)
+        headings = {
+            "Scenario": "Scenario",
+            "Technology": "Technology",
+            "Region": "Region",
+            "eligibility_share_%": "Eligibility Share (%)",
+            "available_area_km2": "Available Area (km^2)",
+            "power_potential_TW": "Power Potential (TW)",
+        }
+        filters_frame = ttk.Frame(results_frame)
+        filters_frame.grid(row=0, column=0, sticky="ew", padx=(0, 12), pady=(6, 4))
+        for idx in range(len(self.aggregated_columns)):
+            filters_frame.columnconfigure(idx, weight=1)
+        for idx, col in enumerate(self.aggregated_columns):
+            var = tk.StringVar()
+            self.aggregated_filters[col] = var
+            entry = ttk.Entry(filters_frame, textvariable=var)
+            entry.grid(row=0, column=idx, sticky="ew", padx=2)
+            entry.bind("<KeyRelease>", self._handle_filter_change)
+            entry.configure(width=18)
+        self.filter_notice = ttk.Label(
+            results_frame,
+            text="Type to filter (substring match, case-insensitive). Leave blank to clear.",
+            foreground="#555555",
+        )
+        self.filter_notice.grid(row=2, column=0, sticky="w", padx=(0, 12), pady=(4, 6))
+        self.aggregated_tree = ttk.Treeview(
+            results_frame, columns=self.aggregated_columns, show="headings", height=14
+        )
+        for col in self.aggregated_columns:
+            header = headings.get(col, col.replace("_", " ").title())
+            self.aggregated_tree.heading(col, text=header)
+            self.aggregated_tree.column(col, anchor="w", width=160)
+        self.aggregated_tree.grid(row=1, column=0, sticky="nsew")
+        aggregated_scroll = ttk.Scrollbar(results_frame, orient="vertical", command=self.aggregated_tree.yview)
+        aggregated_scroll.grid(row=1, column=1, sticky="ns")
+        self.aggregated_tree.configure(yscrollcommand=aggregated_scroll.set)
+    def _build_delete_tab(self) -> None:
+        frame = ttk.LabelFrame(self.delete_tab, text="Delete Scenario Results")
+        frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(3, weight=1)
+
+        ttk.Label(
+            frame,
+            text="Run delete_scenario_results.py to remove generated files for a scenario.",
+            font=("Segoe UI", 12, "bold"),
+        ).grid(row=0, column=0, sticky="w")
+        ttk.Label(
+            frame,
+            text="Respond to prompts below when the script asks for scenario selection or confirmation.",
+            foreground="#555555",
+        ).grid(row=1, column=0, sticky="w", pady=(2, 10))
+
+        controls = ttk.Frame(frame)
+        controls.grid(row=2, column=0, sticky="ew", pady=(0, 8))
+        controls.columnconfigure(2, weight=1)
+        self.delete_run_button = ttk.Button(controls, text="Run delete_scenario_results.py", command=self.handle_delete_run)
+        self.delete_run_button.grid(row=0, column=0, padx=(0, 6))
+        self.delete_stop_button = ttk.Button(controls, text="Stop", command=self.handle_delete_stop, state="disabled")
+        self.delete_stop_button.grid(row=0, column=1, padx=(0, 6))
+        self.delete_status_label = ttk.Label(controls, text="Status: Idle")
+        self.delete_status_label.grid(row=0, column=2, sticky="w")
+
+        log_frame = ttk.LabelFrame(frame, text="Script Output")
+        log_frame.grid(row=3, column=0, sticky="nsew")
+        log_frame.columnconfigure(0, weight=1)
+        log_frame.rowconfigure(0, weight=1)
+        self.delete_log_text = tk.Text(log_frame, height=14, wrap="none", state="disabled", font=("Consolas", 10))
+        self.delete_log_text.grid(row=0, column=0, sticky="nsew")
+        log_scroll = ttk.Scrollbar(log_frame, orient="vertical", command=self.delete_log_text.yview)
+        log_scroll.grid(row=0, column=1, sticky="ns")
+        self.delete_log_text.configure(yscrollcommand=log_scroll.set)
+        for tag, color in {
+            "info": "#333333",
+            "success": "#1a7f37",
+            "warning": "#a66b00",
+            "error": "#b42318",
+            "input": "#0d5d9b",
+        }.items():
+            self.delete_log_text.tag_configure(tag, foreground=color)
+
+        input_row = ttk.Frame(frame)
+        input_row.grid(row=4, column=0, sticky="ew", pady=(10, 0))
+        input_row.columnconfigure(1, weight=1)
+        ttk.Label(input_row, text="Send Input:").grid(row=0, column=0, sticky="w", padx=(0, 6))
+        self.delete_input_entry = ttk.Entry(input_row, textvariable=self.delete_input_var, state="disabled")
+        self.delete_input_entry.grid(row=0, column=1, sticky="ew")
+        self.delete_input_entry.bind("<Return>", self._handle_delete_send_event)
+        self.delete_send_button = ttk.Button(
+            input_row, text="Send", command=self.handle_delete_send, state="disabled"
+        )
+        self.delete_send_button.grid(row=0, column=2, padx=(6, 0))
+        self._set_delete_running_state(False)
+    def _format_command(self, cmd: List[str]) -> str:
+        if hasattr(shlex, "join"):
+            return shlex.join(cmd)
+        return " ".join(cmd)
+    def _set_running_state(self, running: bool) -> None:
+        self.run_button.configure(state="disabled" if running else "normal")
+        self.stop_button.configure(state="normal" if running else "disabled")
+    def _update_status_labels(self) -> None:
+        self.status_label.configure(text=f"Status: {self.status.capitalize()}")
+        duration_text = "--"
+        if self.start_time:
+            end = self.end_time or time.time()
+            duration_text = f"{int(end - self.start_time)}s"
+        self.duration_label.configure(text=f"Duration: {duration_text}")
+    def _append_log(self, level: str, message: str) -> None:
+        tag = level if level in {"info", "success", "warning", "error"} else "info"
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.log_text.configure(state="normal")
+        self.log_text.insert("end", f"[{timestamp}] {message}\n", tag)
+        self.log_text.configure(state="disabled")
+        self.log_text.see("end")
+    def _clear_log(self) -> None:
+        self.log_text.configure(state="normal")
+        self.log_text.delete("1.0", "end")
+        self.log_text.configure(state="disabled")
+    def _start_spinner(self) -> None:
+        self.progress_bar.configure(mode="indeterminate")
+        self.progress_bar.start(10)
+    def _stop_spinner(self) -> None:
+        self.progress_bar.stop()
+        self.progress_bar.configure(mode="determinate")
+    def _start_duration_timer(self) -> None:
+        self._cancel_duration_timer()
+        if self.status == "running":
+            self.after_id = self.after(1000, self._tick_duration)
+    def _cancel_duration_timer(self) -> None:
+        if self.after_id:
+            try:
+                self.after_cancel(self.after_id)
+            except tk.TclError:
+                pass
+        self.after_id = None
+    def _tick_duration(self) -> None:
+        self.after_id = None
+        if self.status == "running":
+            self._update_status_labels()
+            self.after_id = self.after(1000, self._tick_duration)
+    def _resolve_script_path(self, script_name: str) -> Path:
+        candidates = [
+            PARENT_DIR / script_name,
+            CURRENT_DIR / script_name,
+            PARENT_DIR / "scripts" / script_name,
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+        raise FileNotFoundError(f"Could not find {script_name} in the expected locations.")
+    def _resolve_results_json_path(self) -> Path:
+        base_dir = self.expected_output_dir or PARENT_DIR
+        json_path = base_dir / "aggregated_available_land.json"
+        try:
+            return json_path.resolve()
+        except Exception:
+            return json_path
+    def handle_run(self) -> None:
+        if self.runner.is_running():
+            return
+        try:
+            script_path = self._resolve_script_path("results_analysis.py")
+        except FileNotFoundError as exc:
+            message = str(exc)
+            self._append_log("error", message)
+            messagebox.showerror("Execution Error", message)
+            return
+        self.expected_output_dir = script_path.parent
+        self.status = "running"
+        self.stop_requested = False
+        self.progress.set(0)
+        self._clear_log()
+        self.clear_aggregated_results()
+        self.start_time = time.time()
+        self.end_time = None
+        self._set_running_state(True)
+        self._update_status_labels()
+        self._start_spinner()
+        self._start_duration_timer()
+        command = [sys.executable, "-u", str(script_path)]
+        self._append_log("info", f"Starting process: {self._format_command(command)}")
+        try:
+            self.runner.run(
+                self,
+                [str(part) for part in command],
+                cwd=self.expected_output_dir,
+                on_line=self._handle_process_output,
+                on_exit=self._handle_process_exit,
+            )
+        except Exception as exc:
+            self.runner.cancel()
+            self._stop_spinner()
+            self._cancel_duration_timer()
+            self.status = "error"
+            self.start_time = None
+            self.end_time = None
+            self._append_log("error", f"Failed to start process: {exc}")
+            self._set_running_state(False)
+            self._update_status_labels()
+            self.expected_output_dir = None
+            messagebox.showerror("Execution Error", f"Failed to start process:\n{exc}")
+    def handle_stop(self) -> None:
+        if not self.runner.is_running():
+            return
+        self.stop_requested = True
+        self.status = "stopping"
+        self._append_log("warning", "Stop requested. Waiting for process to exit...")
+        self._update_status_labels()
+        self.runner.stop()
+    def _handle_process_output(self, level: str, message: str) -> None:
+        tag = level if level in {"info", "success", "warning", "error"} else "info"
+        self._append_log(tag, message)
+    def _handle_process_exit(self, return_code: int) -> None:
+        self.runner.cancel()
+        self._stop_spinner()
+        self._cancel_duration_timer()
+        self.end_time = time.time()
+        if return_code == 0 and not self.stop_requested:
+            self.status = "completed"
+            self.progress.set(100)
+            self._append_log("success", "Process completed successfully.")
+            status, message, _ = self.display_aggregated_json(self._resolve_results_json_path())
+            if status == "success":
+                self._append_log("success", message)
+            elif status in {"missing", "empty"}:
+                self._append_log("warning", message)
+            else:
+                self._append_log("error", message)
+        else:
+            self.status = "stopped" if self.stop_requested else "error"
+            self.progress.set(0)
+            if self.stop_requested:
+                self._append_log("warning", f"Process exited with code {return_code} after stop request.")
+            else:
+                self._append_log("error", f"Process exited with code {return_code}.")
+        self._set_running_state(False)
+        self._update_status_labels()
+        self.stop_requested = False
+        self.expected_output_dir = None
+    def clear_aggregated_results(self) -> None:
+        self.current_aggregated_rows = []
+        if self.aggregated_tree:
+            for item in self.aggregated_tree.get_children():
+                self.aggregated_tree.delete(item)
+        self.latest_aggregated_path = None
+        self._apply_aggregated_filters()
+    def _populate_aggregated_tree(self, rows: List[Dict[str, Any]]) -> None:
+        if not self.aggregated_tree:
+            return
+        self.aggregated_tree.delete(*self.aggregated_tree.get_children())
+        for row in rows:
+            values = [self._format_aggregated_value(row.get(col)) for col in self.aggregated_columns]
+            self.aggregated_tree.insert("", "end", values=values)
+    def _update_delete_status(self) -> None:
+        if self.delete_status_label:
+            self.delete_status_label.configure(text=f"Status: {self.delete_status.capitalize()}")
+    def _set_delete_running_state(self, running: bool) -> None:
+        if self.delete_run_button:
+            self.delete_run_button.configure(state="disabled" if running else "normal")
+        if self.delete_stop_button:
+            self.delete_stop_button.configure(state="normal" if running else "disabled")
+        entry_state = "normal" if running else "disabled"
+        if self.delete_input_entry:
+            self.delete_input_entry.configure(state=entry_state)
+            if running:
+                self.delete_input_entry.focus_set()
+            else:
+                self.delete_input_var.set("")
+        if self.delete_send_button:
+            self.delete_send_button.configure(state=entry_state)
+    def _delete_clear_log(self) -> None:
+        if not self.delete_log_text:
+            return
+        self.delete_log_text.configure(state="normal")
+        self.delete_log_text.delete("1.0", "end")
+        self.delete_log_text.configure(state="disabled")
+    def _delete_append_log(self, level: str, message: str) -> None:
+        if not self.delete_log_text:
+            return
+        tag = level if level in {"info", "error", "warning", "input"} else "info"
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.delete_log_text.configure(state="normal")
+        self.delete_log_text.insert("end", f"[{timestamp}] {message}\n", tag)
+        self.delete_log_text.configure(state="disabled")
+        self.delete_log_text.see("end")
+    def handle_delete_run(self) -> None:
+        if self.delete_runner.is_running():
+            return
+        try:
+            script_path = self._resolve_script_path("delete_scenario_results.py")
+        except FileNotFoundError as exc:
+            message = str(exc)
+            self._delete_append_log("error", message)
+            messagebox.showerror("Execution Error", message)
+            return
+        self.delete_expected_dir = script_path.parent
+        self.delete_status = "running"
+        self._set_delete_running_state(True)
+        self._update_delete_status()
+        self._delete_clear_log()
+        command = [sys.executable, "-u", str(script_path)]
+        self._delete_append_log("info", f"Starting process: {self._format_command(command)}")
+        try:
+            self.delete_runner.run(
+                self,
+                [str(part) for part in command],
+                cwd=self.delete_expected_dir,
+                on_line=self._handle_delete_output,
+                on_exit=self._handle_delete_exit,
+            )
+        except Exception as exc:
+            self.delete_runner.cancel()
+            self.delete_status = "error"
+            self._update_delete_status()
+            self._set_delete_running_state(False)
+            self._delete_append_log("error", f"Failed to start process: {exc}")
+            self.delete_expected_dir = None
+            messagebox.showerror("Execution Error", f"Failed to start process:\n{exc}")
+    def handle_delete_stop(self) -> None:
+        if not self.delete_runner.is_running():
+            return
+        self.delete_status = "stopping"
+        self._update_delete_status()
+        self._delete_append_log("warning", "Stop requested. Waiting for process to exit...")
+        self.delete_runner.stop()
+    def handle_delete_send(self) -> None:
+        if not self.delete_runner.is_running():
+            return
+        text = self.delete_input_var.get()
+        if not text.strip():
+            return
+        try:
+            self.delete_runner.send_input(text)
+            self._delete_append_log("input", f">>> {text}")
+        except RuntimeError as exc:
+            self._delete_append_log("error", str(exc))
+            messagebox.showerror("Send Input Failed", str(exc))
+        finally:
+            self.delete_input_var.set("")
+    def _handle_delete_send_event(self, _event: tk.Event) -> str:
+        self.handle_delete_send()
+        return "break"
+    def _handle_delete_output(self, level: str, message: str) -> None:
+        self._delete_append_log(level, message)
+    def _handle_delete_exit(self, return_code: int) -> None:
+        self.delete_runner.cancel()
+        if return_code == 0 and self.delete_status != "stopping":
+            self.delete_status = "completed"
+            self._delete_append_log("success", "Process completed successfully.")
+        else:
+            if self.delete_status == "stopping":
+                self._delete_append_log("warning", f"Process exited with code {return_code} after stop request.")
+                self.delete_status = "stopped"
+            else:
+                self._delete_append_log("error", f"Process exited with code {return_code}.")
+                self.delete_status = "error"
+        self._set_delete_running_state(False)
+        self._update_delete_status()
+        self.delete_expected_dir = None
+    def _handle_filter_change(self, _event: tk.Event) -> None:
+        self._apply_aggregated_filters()
+    def _apply_aggregated_filters(self) -> None:
+        filters = {
+            col: var.get().strip().lower()
+            for col, var in self.aggregated_filters.items()
+            if var.get().strip()
+        }
+        if not filters:
+            self._populate_aggregated_tree(self.current_aggregated_rows)
+            return
+        filtered_rows: List[Dict[str, Any]] = []
+        for row in self.current_aggregated_rows:
+            matches_all = True
+            for col, term in filters.items():
+                value = row.get(col)
+                compare = "" if value is None else str(value)
+                if term not in compare.lower():
+                    matches_all = False
+                    break
+            if matches_all:
+                filtered_rows.append(row)
+        self._populate_aggregated_tree(filtered_rows)
+    def _format_aggregated_value(self, value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, float):
+            formatted = f"{value:.4f}".rstrip("0").rstrip(".")
+            return formatted if formatted else "0"
+        return str(value)
+    def _normalise_aggregated_rows(self, data: Any) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
+        if not isinstance(data, list):
+            return rows
+        for entry in data:
+            if not isinstance(entry, dict):
+                continue
+            scenario_val = entry.get("scenario")
+            tech_val = entry.get("technology")
+            scenario = "" if scenario_val is None else str(scenario_val)
+            technology = "" if tech_val is None else str(tech_val)
+            aggregated = entry.get("aggregated")
+            if isinstance(aggregated, dict):
+                rows.append(
+                    {
+                        "Scenario": scenario,
+                        "Technology": technology,
+                        "Region": "ALL",
+                        "eligibility_share_%": aggregated.get("eligibility_share_%"),
+                        "available_area_km2": aggregated.get("available_area_km2"),
+                        "power_potential_TW": aggregated.get("power_potential_TW"),
+                    }
+                )
+            regions = entry.get("regions")
+            if isinstance(regions, dict):
+                for region_name, metrics in regions.items():
+                    if not isinstance(metrics, dict):
+                        continue
+                    region = "" if region_name is None else str(region_name)
+                    rows.append(
+                        {
+                            "Scenario": scenario,
+                            "Technology": technology,
+                            "Region": region,
+                            "eligibility_share_%": metrics.get("eligibility_share_%"),
+                            "available_area_km2": metrics.get("available_area_km2"),
+                            "power_potential_TW": metrics.get("power_potential_TW"),
+                        }
+                    )
+        return rows
+    def _set_aggregated_rows(self, rows: List[Dict[str, Any]]) -> None:
+        self.current_aggregated_rows = rows
+        self._apply_aggregated_filters()
+    def display_aggregated_json(self, json_path: Optional[Path] = None) -> Tuple[str, str, int]:
+        if not self.aggregated_tree:
+            return ("error", "Aggregated results view unavailable.", 0)
+        target = json_path or (PARENT_DIR / "aggregated_available_land.json")
+        try:
+            resolved = target.resolve()
+        except Exception:
+            resolved = target
+        self.clear_aggregated_results()
+        self.latest_aggregated_path = resolved
+        if not resolved.exists():
+            return ("missing", f"Aggregated results JSON not found: {resolved}", 0)
+        try:
+            raw_data = resolved.read_text(encoding="utf-8")
+            payload = json.loads(raw_data) if raw_data.strip() else []
+        except (OSError, json.JSONDecodeError) as exc:
+            self.clear_aggregated_results()
+            return ("error", f"Failed to load aggregated results from {resolved}: {exc}", 0)
+        rows = self._normalise_aggregated_rows(payload)
+        if not rows:
+            self.clear_aggregated_results()
+            return ("empty", f"No aggregated entries found in {resolved}", 0)
+        self._set_aggregated_rows(rows)
+        return ("success", f"Loaded {len(rows)} rows from {resolved}", len(rows))
 class PythonScriptManagerApp(tk.Tk):
     """Main application window."""
     def __init__(self) -> None:
         super().__init__()
         self.title("Python Script Manager (Tkinter)")
         self.geometry("1200x780")
+        if HAVE_TTKBOOTSTRAP:
+            try:
+                self.style = Style(theme="litera", master=self)
+            except Exception:  # pragma: no cover - optional dependency
+                self.style = None
         self.sections = load_initial_sections()
         self.sample_results = load_sample_results()
-        notebook = ttk.Notebook(self)
-        notebook.pack(fill="both", expand=True)
-        self.config_tab = ConfigurationTab(notebook, self.sections)
-        notebook.add(self.config_tab, text="Configuration")
-        self.run_tab = RunTab(notebook, self.config_tab)
-        notebook.add(self.run_tab, text="Run")
-        self.results_tab = ResultsTab(notebook, self.sample_results)
-        notebook.add(self.results_tab, text="Results")
+        outer = ttk.Frame(self)
+        outer.pack(fill="both", expand=True)
+        outer.columnconfigure(0, weight=1)
+        outer.rowconfigure(1, weight=1)
+
+        header = ttk.Frame(outer)
+        header.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 0))
+        header.columnconfigure(0, weight=1)
+        ttk.Label(header, text="Python Script Manager", font=("Segoe UI", 16, "bold")).grid(
+            row=0, column=0, sticky="w"
+        )
+        ttk.Button(header, text="Reload UI", command=self.reload_ui).grid(row=0, column=1, sticky="e")
+
+        self.notebook = ttk.Notebook(outer)
+        self.notebook.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
+        self._build_tabs()
+
+    def _build_tabs(self) -> None:
+        self.notebook_tabs = []
+        self.sections = load_initial_sections()
+        self.sample_results = load_sample_results()
+        self.config_tab = ConfigurationTab(self.notebook, self.sections)
+        self.notebook.add(self.config_tab, text="Configuration")
+        self.notebook_tabs.append(self.config_tab)
+        self.results_tab = ResultsTab(self.notebook, self.sample_results)
+        self.run_tab = RunTab(self.notebook, self.config_tab, self.results_tab)
+        self.notebook.add(self.run_tab, text="Run")
+        self.notebook.add(self.results_tab, text="Results")
+        self.notebook_tabs.extend([self.run_tab, self.results_tab])
+
+    def reload_ui(self) -> None:
+        current_index = self.notebook.index(self.notebook.select()) if self.notebook.tabs() else 0
+        for tab in getattr(self, "notebook_tabs", []):
+            try:
+                self.notebook.forget(tab)
+            except Exception:
+                pass
+            try:
+                tab.destroy()
+            except Exception:
+                pass
+        self._build_tabs()
+        if self.notebook.tabs():
+            restored_index = min(current_index, len(self.notebook.tabs()) - 1)
+            self.notebook.select(restored_index)
 def main() -> None:
     app = PythonScriptManagerApp()
     app.mainloop()
