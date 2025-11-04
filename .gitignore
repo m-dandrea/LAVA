@@ -37,6 +37,7 @@
 !configs/solar_template_china.yaml
 !configs/onshorewind_template.yaml
 !configs/solar_template.yaml
+!configs/suitability_template_china.yaml
 !configs/technologies
 !configs/technologies/HW_distributed_farm.yaml
 !configs/technologies/LW_distributed_farm.yaml
@@ -56,6 +57,7 @@
 !snakemake/snakefile_short_short
 !suitability.py
 !weather_data_prep.py
+!weather_bias_adjust.py
 !create_cutout.py
 !bias_correction_factors
 !bias_correction_factors/ERA5_wnd100m_bias.nc

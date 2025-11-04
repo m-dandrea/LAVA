@@ -163,7 +163,8 @@ def clip_reproject_raster(input_raster_path, region_name_clean, gdf, data_name, 
     resampling_options = {
         'nearest': Resampling.nearest,
         'bilinear': Resampling.bilinear,
-        'cubic': Resampling.cubic
+        'cubic': Resampling.cubic,
+        'mode': Resampling.mode
     }
 
     dtype_options = {
@@ -235,7 +236,8 @@ def reproject_raster(input_raster_path, region_name_clean, target_crs, resamplin
     resampling_options = {
         'nearest': Resampling.nearest,
         'bilinear': Resampling.bilinear,
-        'cubic': Resampling.cubic
+        'cubic': Resampling.cubic,
+        'mode': Resampling.mode
     }
 
     dtype_options = {
@@ -301,7 +303,8 @@ def co_register(infile, match, resampling_method, outfile, dtype): #source: http
     resampling_options = {
         'nearest': Resampling.nearest,
         'bilinear': Resampling.bilinear,
-        'cubic': Resampling.cubic
+        'cubic': Resampling.cubic,
+        'mode': Resampling.mode
     }
 
     dtype_options = {
