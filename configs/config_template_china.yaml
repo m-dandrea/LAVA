@@ -150,7 +150,7 @@ input_area: resource_grades # 'resource_grades' or 'available_land' or 'study_re
 weather_year: 2015
 
 # Download weather data within study region boundaries, or geographical bounds defined below
-weather_data_extend: geo_bounds # 'study_region' or 'geo_bounds'
+weather_data_extend: study_region # 'study_region' or 'geo_bounds' or "country_code"
 
 # If 'geo_bounds' is selected, define the bounding box here (geographical coordinates)
 weather_data_geo_bounds: { 
