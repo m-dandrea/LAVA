@@ -10,12 +10,13 @@ Before installing and running **LAVA**, ensure you have the following:
 
 - **Conda** (Anaconda or Miniconda) installed on your system for managing the environment.
 - **Git** (optional) if you plan to clone the repository using Git.
-- A system with sufficient disk space and memory, especially if processing large datasets.
+- **[VSCode](https://code.visualstudio.com/download)** or another code editor for editing configuration files and scripts.
+- A system with sufficient disk space (min. 15 GB) and RAM (16 GB or higher), especially if processing large datasets.
 
 Setting up the Conda Environment
 --------------------------------
 
-1. **Clone the repository** (if you haven't done so): Open a terminal and run:
+1. **Clone the repository**: Open a terminal and run:
 
    .. code-block:: bash
 
@@ -30,7 +31,7 @@ Setting up the Conda Environment
 
       conda env create -f envs/environment.yaml
 
-   This will create a new Conda environment (often named ``lava``) with all required packages, including Snakemake and geospatial libraries (GDAL/OGR, OpenEO client, etc.).
+   This will create a new Conda environment (named ``lava``) with all required packages, including Snakemake and geospatial libraries (GDAL/OGR, OpenEO client, etc.).
 
 3. **Activate the environment**:
 
