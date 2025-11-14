@@ -54,33 +54,55 @@ Understanding the repository layout will help in navigating the project and conf
 
 .. code-block:: text
 
-   LAVA/ 
-   ├── Snakefile
-   ├── 📁envs/requirements.yml       # Requirements for environment
-   ├── config/
-   │   ├── config.yaml             # Main configuration file for the pipeline
-   |   ├── onshore.yaml            # Technology specific configurations
-   |   ├── solar.yaml            # Technology specific configurations
-   |   └── ...
-   ├── Raw_spatial_data/          # Directory for input data (e.g., bathimetry data (DEM), ... )
-   │   └── ...                    
-   ├── data/                      # Directory where output results will be stored (e.g., land availability)
-   │   └── ...                    
-   ├── snakemake/                 # Snakemke worflows
-   │   └── ...                    
-   ├── utils/                    # Collection of supporting scripts storing functions used in the main scripts. 
-   │   └── ...                    
-   └── README.md                  # Project README with additional info
+    📁 LAVA/
+    ├── 📁 configs
+    │   ├── config_template.yaml
+    │   ├── config_advanced_settings_template.yaml
+    │   ├── onshorewind_template.yaml
+    │   ├── solar_template.yaml
+    │   └── config_snakemake.yaml
+    ├── 📁 docs
+    ├── 📁 envs
+    ├── 📁 Raw_Spatial_Data/
+    │   ├── 📁 additional_exclusion_polygons
+    │   ├── 📁 custom_study_area
+    │   ├── 📁 DEM
+    │   ├── 📁 global_solar_wind_atlas
+    │   ├── 📁 GOAS
+    │   ├── 📁 landcover
+    │   ├── 📁 OSM
+    │   └── 📁 protected_areas
+    ├── 📁 snakemake
+    ├── 📁 tkinter_app
+    ├── 📁 utils
+    ├── 📁 weather_data
+    └── 📁 data/
+        └── 📁 "region_name"/
+            ├── 📁 available_land/
+            ├── 📁 derived_from_DEM/
+            │   ├── slope
+            │   └── aspect
+            ├── 📁 OSM_infrastructure/
+            ├── 📁 proximity/
+            ├── DEM
+            ├── region_polygon
+            ├── solar
+            ├── wind
+            ├── protected_areas
+            ├── landcover
+            ├── EPSG
+            ├── landuses
+            └── pixel_size
 
-Key components of the structure:
-
-- **Snakefile**: The main Snakemake workflow definition. It describes all the rules (steps) in the pipeline.
-- **requirement.yaml**: Conda environment specification with all required dependencies.
-- **config/**: Contains configuration files. The main ``config.yaml`` defines global settings. 
+Main folders important for user:
+- **configs**: multiple configuration files 
 - **Raw_spatial_data/**: Intended for raw input data required by the pipeline. For example, if the pipeline requires a boundary shapefile or other input datasets, they should be placed here, in the specified folders.
-- **data/**: Outputs produced by the pipeline will be stored here. The pipeline will create subdirectories or files in this folder to organize results.
-- **snakemake/**: Snakemake workflows.
-- **utils/**: Collection of supporting scripts storing functions used in the main scripts. 
-- **README.md**: A markdown file with basic information about the project (often includes a brief description and possibly a summary of setup instructions).
+- **data/**: Outputs produced by the pipeline will be stored here. The pipeline will create subdirectories or files in this folder to organize results. This folder only appears after the first tool run.
 
-With the environment set up and an understanding of the folder structure, you are now ready to use the pipeline. Proceed to the next section for instructions on running the workflow and configuring it for your data.
+
+LAVA data setup
+------------------------
+Most input data is downloaded automatically in the workflow except the following two datasets which must be retrieved manually and placed in the right folder.
+- **DEM**: Download the DEM for your study region from `GEBCO <https://download.gebco.net/>`_. Use the download tool. Select a larger area around your study region. Set a tick for a GeoTIFF file under "Grid" and download the file from the basket. Put the file into the folder **"DEM"** (digital elevation model) and name it ***gebco_cutout.tif***. This data provides the elevation in each pixel. It is also possible to use a different dataset.
+- **Coastlines**: On `marineregions.org/downloads <https://marineregions.org/downloads.php/>`_ click on "Global Oceans and Seas" and download the geopackage. Unzip, name the file ***"goas.gpkg"*** and put it into the folder **"GOAS"** in the **"Raw_Spatial_Data"** folder.
+
