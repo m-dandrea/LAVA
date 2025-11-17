@@ -87,7 +87,8 @@
 !docs/getting_started.rst
 !docs/requirements-docs.txt
 !docs/troubleshooting.rst
-!docs/usage.rst
+!docs/basic_workflow.rst
+!docs/full_workflow.rst
 !docs/faq.rst
 !.readthedocs.yaml
 # --- User interface ---

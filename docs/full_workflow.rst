@@ -80,14 +80,9 @@ technology configuration, and writes ``*_available_land_*.tif`` files under
 for traceability.
 
 
-Advanced functionalities
----------------------------
-!!!
-TBA
-!!!
 
 Suitability and resource grades
-~~~~~~~~~~
+---------------------------
 
 Run :mod:`suitability.py` after both solar and wind exclusions are available. The script aligns
 resource layers, applies terrain and region modifiers, and exports cost multipliers together with
@@ -98,7 +93,7 @@ thresholded resource-grade rasters in ``data/<RegionName>/suitability/``.
    python suitability.py --region <RegionName> --scenario ref
 
 Energy profile simulation
-~~~~~~~~~~
+---------------------------
 
 Energy profiles combine the available land, suitability grades, and weather cut-outs. Ensure that
 ``configs/config.yaml`` points ``weather_data_path`` to the directory that contains the prepared
@@ -113,7 +108,7 @@ Outputs are written to ``data/<RegionName>/energy_profiles/`` and include resour
 as well as diagnostic plots documenting the available area shares.
 
 Batch processing with Snakemake
-~~~~~~~~~~
+---------------------------
 
 For large-scale studies the ``snakemake/Snakefile`` orchestrates all stages across multiple regions,
 technologies, and weather years. The workflow creates ``snakemake_log`` sentinels to prevent reruns

@@ -9,5 +9,6 @@ Welcome to the **LAVA_china** pipeline documentation. This documentation provide
 
    background 
    getting_started
-   usage
+   basic_workflow
+   full_workflow
    faq
