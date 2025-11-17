@@ -1,4 +1,4 @@
-Usage
+Full workflow
 =====
 
 This guide walks through the end-to-end workflow for running the Land Availability Analysis (LAVA)
