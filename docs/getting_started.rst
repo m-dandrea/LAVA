@@ -18,8 +18,7 @@ Having installed Conda check that you have access to conda in your terminal (or 
     set PATH=C:\users\miniconda\Scripts
 
 - `Git <https://git-scm.com/install/>`_ (optional) if you plan to clone the repository using Git.
-- VSCode or another code editor for editing configuration files and scripts. \
-In VSCode you should link the command prompt to the terminal by following the steps below: \
+- `VSCode <https://code.visualstudio.com/download>`_ or another code editor for editing configuration files and scripts. In VSCode you should link the command prompt to the terminal by following the steps below: \
   - Press Ctrl + Shift + P to show all commands. \
   - Type `Select Terminal: Select Default Profile.` and click it. \
   - Click on "Command Prompt".
