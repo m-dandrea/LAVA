@@ -2,6 +2,7 @@ LAVA Documentation
 ========================
 
 Welcome to the **LAVA** documentation. This documentation provides a comprehensive guide on how to set up and use the LAVA workflow.
+You can find the LAVA GitHub repository `here <https://github.com/jome1/LAVA>`_.
 
 .. toctree::
    :maxdepth: 2
