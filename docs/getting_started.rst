@@ -9,14 +9,11 @@ Prerequisites
 Before installing and running **LAVA**, ensure you have the following:
 
 - `Conda <https://docs.conda.io/projects/conda/en/stable/user-guide/install/index.html>`_ (Anaconda or Miniconda) installed on your system for managing the environment and python.
-Having installed Conda check that you have access to conda in your terminal (or Anaconda Prompt on Windows) and make sure to add conda to your system PATH (search for the following folders in your machine).
+Having installed Conda check that you have access to conda in your terminal (or Anaconda Prompt on Windows) with the command ``conda --version``. Furthermore, make sure to add conda to your system PATH (search for the following folders in your machine).
 
 .. code-block:: console
-
-    # check conda
-    conda --version
-
-    # add to system PATH
+  
+    # add to system PATH ("users" might differ on your machine)
     set PATH=C:\users\miniconda
     set PATH=C:\users\miniconda\Scripts
 
