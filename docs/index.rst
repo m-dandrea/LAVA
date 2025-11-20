@@ -10,5 +10,6 @@ You can find the LAVA GitHub repository `here <https://github.com/jome1/LAVA>`_.
 
    background 
    getting_started
+   data_sources
    basic_workflow
    faq
