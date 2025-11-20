@@ -129,9 +129,11 @@ plantsPath = os.path.join(data_path_OSM, f'{OSM_source}_plants.gpkg')
 plants = 1 if os.path.isfile(plantsPath) else 0
 
 # Additional exclusion polygons
-additional_exclusion_polygons_Path = os.path.join(data_path, 'additional_exclusion_polygons')
-additional_exclusion_polygons = 1 if os.path.exists(additional_exclusion_polygons_Path) else 0
-
+additional_exclusion_polygons_folderPath = os.path.join(data_path, 'additional_exclusion_polygons')
+additional_exclusion_polygons = 1 if os.path.exists(additional_exclusion_polygons_folderPath) else 0
+# Additional exclusion rasters
+additional_exclusion_rasters_folderPath = os.path.join(data_path, 'additional_exclusion_rasters')
+additional_exclusion_rasters = 1 if os.path.exists(additional_exclusion_rasters_folderPath) else 0
 
 # load unique land use codes
 with open(os.path.join(data_path, f'landuses_{region_name_clean}.json'), 'r') as fp:
@@ -341,13 +343,36 @@ elif plants == 0: info_list_not_available.append("existing plants")
 
 
 # add additional exclusion polygons
-if additional_exclusion_polygons==1 and tech_config['additional_exclusion_polygons_buffer']:   
-    for i, (buffer_value, filename) in enumerate(zip(tech_config['additional_exclusion_polygons_buffer'], os.listdir(additional_exclusion_polygons_Path))):
-        filepath = os.path.join(additional_exclusion_polygons_Path, filename)    # Construct the full file path
-        excluder.add_geometry(filepath, buffer=buffer_value)
-        info_list_exclusion.append(f'additional exclusion polygon file {i+1}: {buffer_value}')
+buffer_config = tech_config.get('additional_exclusion_polygons_buffer')
+if additional_exclusion_polygons==1 and buffer_config:   
+    for filename in os.listdir(additional_exclusion_polygons_folderPath):
+        if filename in buffer_config:              # check if buffer is defined
+            buffer_value = buffer_config[filename]
+            filepath = os.path.join(additional_exclusion_polygons_folderPath, filename)
+            excluder.add_geometry(filepath, buffer=buffer_value)
+            info_list_exclusion.append(f'additional exclusion polygons file: {filename}: {buffer_value}'        )
 elif additional_exclusion_polygons == 1 and tech_config['additional_exclusion_polygons_buffer'] is None: info_list_not_selected.append("additional_exclusion_polygons_buffer")
 elif additional_exclusion_polygons == 0: info_list_not_available.append("additional_exclusion_polygons_buffer")
+
+# if additional_exclusion_polygons==1 and tech_config['additional_exclusion_polygons_buffer']:   
+#     for i, (buffer_value, filename) in enumerate(zip(tech_config['additional_exclusion_polygons_buffer'], os.listdir(additional_exclusion_polygons_folderPath))):
+#         filepath = os.path.join(additional_exclusion_polygons_folderPath, filename)    # Construct the full file path
+#         excluder.add_geometry(filepath, buffer=buffer_value)
+#         info_list_exclusion.append(f'additional exclusion polygon file {i+1}: {buffer_value}')
+# elif additional_exclusion_polygons == 1 and tech_config['additional_exclusion_polygons_buffer'] is None: info_list_not_selected.append("additional_exclusion_polygons_buffer")
+# elif additional_exclusion_polygons == 0: info_list_not_available.append("additional_exclusion_polygons_buffer")
+
+# add additional exclusion rasters
+buffer_config = tech_config.get('additional_exclusion_rasters_buffer')
+if additional_exclusion_rasters==1 and buffer_config:   
+    for filename in os.listdir(additional_exclusion_rasters_folderPath):
+        if filename in buffer_config:              # check if buffer is defined
+            buffer_value = buffer_config[filename]
+            filepath = os.path.join(additional_exclusion_rasters_folderPath, filename)
+            excluder.add_raster(filepath, codes=range(0,1e6), buffer=buffer_value, crs=global_crs_obj)
+            info_list_exclusion.append(f'additional exclusion raster file: {filename}: {buffer_value}'        )
+elif additional_exclusion_rasters == 1 and not buffer_config: info_list_not_selected.append("additional_exclusion_rasters_buffer")
+elif additional_exclusion_rasters == 0: info_list_not_available.append("additional_exclusion_polygons_buffer")
 
 
 # INCLUSION
