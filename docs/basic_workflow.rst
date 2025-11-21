@@ -37,7 +37,7 @@ For the exclusion criterias copy the files ``onshorewind_template.yaml`` and ``s
 Prepare data
 ------------
 
-Run the preprocessing script  ``spatial_data_prep.yaml`` after having filled out ``config.yaml``. It downloads data, clips the raw inputs to the
+Run the preprocessing script  ``spatial_data_prep.py`` after having filled out ``config.yaml``. It downloads data, clips the raw inputs to the
 study area, aligns rasters, and computes helper layers such as slope, terrain ruggedness, and
 proximity rasters. All outputs are written to a study region specific folder **data/{RegionName}/**.
 
