@@ -17,6 +17,7 @@ import urllib.parse
 from pyproj import CRS
 import pandas as pd
 import rasterstats 
+from datetime import datetime, timedelta
 
 import logging
 
@@ -39,6 +40,35 @@ def get_country_bounds_from_code(country_code):
     return [bbox["minlng"], bbox["minlat"], bbox["maxlng"], bbox["maxlat"]]
 
 
+def retrieve_wdpa_url(country_code):
+    """
+    Attempts to locate the latest available WDPA zip file by checking
+    the current month, previous month, and next month. Returns the
+    first accessible URL or raises an error if none exist.
+    """
+
+    def check_file_exists(url):
+        response = requests.head(url)
+        return response.status_code == 200
+
+    # month formats: e.g., Jan2025
+    month_candidates = [
+        datetime.now().strftime("%b%Y"),
+        (datetime.now() - timedelta(days=30)).strftime("%b%Y"),
+        (datetime.now() + timedelta(days=30)).strftime("%b%Y")
+    ]
+
+    for bYYYY in month_candidates:
+        url = f"https://d1gam3xoknrgr2.cloudfront.net/current/WDPA_WDOECM_{bYYYY}_Public_{country_code}.zip"
+        if check_file_exists(url):
+            logging.info(f"Found WDPA file for {bYYYY} from WDPA for {country_code}")
+            return url, bYYYY
+
+    raise FileNotFoundError(
+        f"No WDPA files found for {month_candidates} using country code: {country_code}"
+    )
+
+
 #download WDPA functions
 def download_unpack_zip(url, output_dir):
     response = requests.get(url)
@@ -48,9 +78,8 @@ def download_unpack_zip(url, output_dir):
         logging.info("Download complete, extracting files...")
         with zipfile.ZipFile(io.BytesIO(response.content)) as z:
             z.extractall(path=output_dir)
-        logging.info(f"Files extracted to {os.path.abspath(output_dir)}")
     else:
-        logging.warning(f"Failed to download the file, status code: {response.status_code}")
+        logging.error(f"WDPA file download failed: {response.status_code}")
 
 # Function to find the geodatabase folder
 def find_folder(directory, file_ending=None, string_in_name=None):
@@ -59,11 +88,9 @@ def find_folder(directory, file_ending=None, string_in_name=None):
             if file_ending is not None:
                 if folder.endswith(file_ending):
                     return os.path.join(root, folder)
-                    logging.info('Found folder with geodatabase')
             if string_in_name is not None:
                 if string_in_name in folder:
                     return os.path.join(root, folder)
-                    logging.info('WDPA folder of country already existed')
     return None
   
 
@@ -467,13 +494,13 @@ def download_global_wind_atlas(country_code: str, height: int, data_path: str = 
             filePath = os.path.join(data_path, 'global_solar_wind_atlas', f"{country_code}_wind_speed_{height}.tif")
             with open(filePath, "wb") as f:
                 f.write(response.content)
-            print(f"Downloaded to: {filePath}")
+            #print(f"Downloaded to: {filePath}")
             return True
         else:
             print(f"Failed to download. HTTP status: {response.status_code}")
             return False
     except Exception as e:
-        print(f"Error: {e}")
+        logging.error(f'global wind atlas download failed: {e}')
         return False
     
 
@@ -518,7 +545,7 @@ def download_global_solar_atlas(country_name: str, data_path: str, measure = 'LT
             with zipfile.ZipFile(io.BytesIO(response.content)) as zip_ref:
                 zip_ref.extractall(extract_folder)
 
-            print(f"Files extracted to '{extract_folder}'")
+            #print(f"Files extracted to '{extract_folder}'")
 
             # Assuming the zip contains a single folder (standard GSA structure)
             folder_name = zip_ref.namelist()[0].split('/')[0]  # top-level folder name
@@ -527,10 +554,10 @@ def download_global_solar_atlas(country_name: str, data_path: str, measure = 'LT
             print(f"Failed to download data for '{country_name}'. Status code: {response.status_code}")
             
     except requests.Timeout:
-        print(f"Download solar atlas data timed out after {timeout} seconds for '{country_name}'.")
+        logging.warning(f"Download solar atlas data timed out after {timeout} seconds for '{country_name}'.")
         return None
     except Exception as e:
-        print(f"An error occurred: {e}")
+        logging.error(f"solar atlas download failed: {e}")
         return None
 
 
