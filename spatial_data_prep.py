@@ -53,7 +53,6 @@ consider_additional_exclusion_polygons = config['additional_exclusion_polygons_f
 consider_additional_exclusion_rasters = config['additional_exclusion_rasters_folder_name']
 CRS_manual = config['CRS_manual']  #if None use empty string
 consider_protected_areas = config['protected_areas_source']
-wdpa_url = config['wdpa_url']
 OSM_source = config['OSM_source']  #either 'geofabrik' or 'overpass'
 consider_forest_density = config.get('forest_density', 0)
 
