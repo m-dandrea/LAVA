@@ -126,11 +126,15 @@ def osm_to_gpkg(
         geometry_type = geometry.get('type')
         if geometry_type in geoms_dict:
             try:
+                # Extract all tags (metadata) from the element
                 props = {
-                    'Name': element.tag('name') or 'Unknown',
-                    'id': str(element.id()),
-                    'Type': element.type()
+                    'osm_id': str(element.id()),
+                    'osm_type': element.type()
                 }
+                # Add all tags from the element
+                if hasattr(element, 'tags') and callable(element.tags):
+                    props.update(element.tags())
+                
                 geom = shape(geometry)  # Convert GeoJSON-like dict to Shapely geometry
                 geoms_dict[geometry_type].append({**props, 'geometry': geom})
             except Exception as e:
