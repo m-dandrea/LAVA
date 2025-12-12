@@ -61,6 +61,9 @@ You can find the LAVA GitHub repository `here <https://github.com/jome1/LAVA>`_.
    .. code-block:: bash
 
       git clone https://github.com/jome1/LAVA.git
+
+.. code-block:: bash
+
       cd LAVA
 
    This will create a local copy of the project in a folder named ``LAVA`` and opens that folder in the terminal.
