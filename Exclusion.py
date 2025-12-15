@@ -153,17 +153,12 @@ additional_exclusion_polygons = 1 if os.path.exists(additional_exclusion_polygon
 additional_exclusion_rasters_folderPath = os.path.join(data_path, 'additional_exclusion_rasters')
 additional_exclusion_rasters = 1 if os.path.exists(additional_exclusion_rasters_folderPath) else 0
 
-# load unique land use codes
-with open(os.path.join(data_path, f'landuses_{region_name_clean}.json'), 'r') as fp:
-    landuses = json.load(fp)
-
-    
+   
 
 #perform exclusions
 
 #raster can be in different CRS than exclusioncontainer, it is co-registered by atlite!
-#vector data needs to be in CRS of exclusioncontainer???
-
+#same applies for vector data
 
 info_list_exclusion = []
 info_list_not_selected = []
