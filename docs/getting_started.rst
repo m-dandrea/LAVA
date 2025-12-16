@@ -9,19 +9,17 @@ Prerequisites
 Before installing and running **LAVA**, ensure you have the following:
 
 - `Conda <https://docs.conda.io/projects/conda/en/stable/user-guide/install/index.html>`_ (Anaconda or Miniconda) installed on your system for managing the environment and python.
-Having installed Conda check that you have access to conda in your terminal (or Anaconda Prompt on Windows) and make sure to add conda to your system PATH (search for the following folders in your machine).
+
+Having installed Conda check that you have access to conda in your terminal (or Anaconda Prompt on Windows) with the command ``conda --version``. Furthermore, make sure to add conda to your system PATH (search for the following folders in your machine).
 
 .. code-block:: console
-
-    # check conda
-    conda --version
-
-    # add to system PATH
+  
+    # add to system PATH ("users" might differ on your machine)
     set PATH=C:\users\miniconda
     set PATH=C:\users\miniconda\Scripts
 
 - `Git <https://git-scm.com/install/>`_ (optional) if you plan to clone the repository using Git.
-- `VSCode <https://code.visualstudio.com/download>`_ or another code editor for editing configuration files and scripts.
+- `VSCode <https://code.visualstudio.com/download>`_ or another code editor for editing configuration files and scripts. In VSCode you should link the command prompt to the terminal by doing the following: a) Press *Ctrl + Shift + P* to show all commands. b) Type *Select Terminal: Select Default Profile* and click it. c) Click on "Command Prompt"
 - A system with sufficient disk space (min. 15 GB) and RAM (16 GB or higher), especially if processing large datasets.
 
 More information on the setup of conda and git can be found `here <https://fneum.github.io/data-science-for-esm/intro.html#git-option-more-advanced>`_. 
@@ -55,12 +53,17 @@ More information on the setup of conda and git can be found `here <https://fneum
 
 Installation of LAVA tool
 --------------------------------
+You can find the LAVA GitHub repository `here <https://github.com/jome1/LAVA>`_.
+
 
 1. **Clone the repository**: Open a terminal, navigate to a location of your choice using :code:`cd {folder_name_in_directory}` and run:
 
    .. code-block:: bash
 
       git clone https://github.com/jome1/LAVA.git
+
+   .. code-block:: bash
+
       cd LAVA
 
    This will create a local copy of the project in a folder named ``LAVA`` and opens that folder in the terminal.
@@ -78,6 +81,17 @@ Installation of LAVA tool
    .. code-block:: bash
 
       conda activate lava
+
+
+LAVA data setup
+------------------------
+There are two final steps to complete the tool setutp. Most input data is downloaded automatically in the workflow except the DEM from GEBCO which must be retrieved manually and placed in the right folder. Furthermore a Copernicus account for the automatic download of landcover data is required.
+
+- **DEM**: Download the DEM for your study region from `GEBCO <https://download.gebco.net/>`_. Use the download tool. Select a larger area around your study region. Set a tick for a GeoTIFF file under "Grid" and download the file from the basket. Put the file into the folder **DEM** (digital elevation model) in the **Raw_Spatial_Data folder** and name it **gebco_cutout.tif**. This data provides the elevation in each pixel. It is also possible to use a different dataset.
+- **ESAworldcover**: In order to automatically download landcover data you need to create an account `here <https://documentation.dataspace.copernicus.eu/Registration.html>`_. The very first time you run the LAVA tool you need to click on a link in the terminal and login to Copernicus. Afterwards, your login will be remembered. 
+
+The tool is now ready to be used. The first step is to fill out the configuration.yaml file.
+
 
 
 LAVA Folder Structure
@@ -134,12 +148,5 @@ Main folders important for user:
 - **data/**: Outputs produced by the pipeline will be stored here. The pipeline will create subdirectories or files in this folder to organize results. This folder only appears after the first tool run.
 
 
-LAVA data setup
-------------------------
-Most input data is downloaded automatically in the workflow except the following two datasets which must be retrieved manually and placed in the right folder.
 
-- **DEM**: Download the DEM for your study region from `GEBCO <https://download.gebco.net/>`_. Use the download tool. Select a larger area around your study region. Set a tick for a GeoTIFF file under "Grid" and download the file from the basket. Put the file into the folder **DEM** (digital elevation model) and name it **gebco_cutout.tif**. This data provides the elevation in each pixel. It is also possible to use a different dataset.
-- **Coastlines**: On `marineregions.org/downloads.php <https://marineregions.org/downloads.php/>`_ click on "Global Oceans and Seas" and download the geopackage. Unzip, name the file **goas.gpkg** and put it into the folder **GOAS** in the **Raw_Spatial_Data** folder.
-
-The tool is now ready to be used. The first step is to fill out the configuration.yaml file.
 
