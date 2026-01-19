@@ -60,7 +60,7 @@ You can find the LAVA GitHub repository `here <https://github.com/jome1/LAVA>`_.
 
    .. code-block:: bash
 
-      git clone https://github.com/jome1/LAVA.git
+      git clone https://github.com/DEA-GE/LAVA.git
 
    .. code-block:: bash
 
