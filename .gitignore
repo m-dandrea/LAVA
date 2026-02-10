@@ -85,11 +85,18 @@
 !docs/.gitkeep
 !docs/conf.py
 !docs/index.rst
+!docs/background.rst
 !docs/getting_started.rst
 !docs/requirements-docs.txt
 !docs/troubleshooting.rst
-!docs/usage.rst
+!docs/basic_workflow.rst
+!docs/full_workflow.rst
 !docs/faq.rst
+!docs/data_sources.rst
+!docs/_static
+!docs/_static/custom.css
+!docs/_static/literature_overview.xlsx
+!docs/faq.md
 !.readthedocs.yaml
 # --- User interface ---
 !tkinter_app
