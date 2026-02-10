@@ -27,7 +27,10 @@ In the **configs-folder** copy the file ``config_template.yaml``, rename it to `
 Under the headline *#--exclusions--* in the configuration the variables **scenario** and **technology** are used to control the available land output.
 
 For the exclusion criterias copy the files ``onshorewind_template.yaml`` and ``solar_template.yaml``. Rename them to ``onshorewind.yaml`` and ``solar.yaml`` respectively. Fill these files out in order to set the exclusion parameters.
-An overview of possible exclusion criterias found in selected literature can be downloaded `here <_static/literature_overview.xlsx>`_.
+
+.. note::
+
+   An overview of possible exclusion criterias found in selected literature can be downloaded `here <_static/literature_overview.xlsx>`_.
 
 Prepare data
 ------------
@@ -69,4 +72,8 @@ technology configuration, and writes ``*_available_land_*.tif`` files under
 **data/{RegionName}/available_land/**. A log of each scenario run is stored in the region folder
 for traceability.
 
+.. note::
+
+   A template to document the exclusion parameters and data sources can be downloaded `here <_static/exclusion_parameters_overview.xlsx>`_.
+   Keep in mind that for every scenario output of available land, the applied exclusion parameters are written in a separate file as well.
 

@@ -96,6 +96,7 @@
 !docs/_static
 !docs/_static/custom.css
 !docs/_static/literature_overview.xlsx
+!docs/_static/exclusion_parameters_overview.xlsx
 !docs/faq.md
 !.readthedocs.yaml
 # --- User interface ---
