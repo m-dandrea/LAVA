@@ -51,7 +51,7 @@ With the advanced workflow it is also possible to perform a suitability analysis
 |----------------------|-------------|
 | DEM (Elevation)      | [GEBCO Gridded Bathymetry Data](https://download.gebco.net/) |
 | Landcover            | [ESA WorldCover](https://esa-worldcover.org/en) via openEO API (Copernicus Data Space)|
-| Population raster    | [worldpop](https://hub.worldpop.org/project/categories?id=3)) |
+| Population raster    | [worldpop](https://hub.worldpop.org/project/categories?id=3) |
 | Spatial features <br>(road, railways, airports, waterbodies,<br>military, substations, power lines, generators)     | OpenStreetMap via overpass or [Geofabrik](https://download.geofabrik.de/) |
 | Coastlines           | Global Oceans and Seas ([Marine Regions](https://marineregions.org/downloads.php)) |
 | Protected Areas      | [World Database of Protected Areas (WDPA) – Protected Planet](https://www.protectedplanet.net/) |
