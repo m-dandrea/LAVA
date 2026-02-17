@@ -524,7 +524,8 @@ print(f'elapsed time: {elapsed}')
 with open(os.path.join(output_dir, f"{region_name_clean}_{scenario}_{technology}_exclusion_info.txt"), "w") as file:
     file.write(f"{technology}")
     file.write(f"\nscenario: {scenario}")
-    file.write(f"\ncalculation time: {elapsed}")
+    file.write(f"\nresolution in m: {res}")
+    file.write(f"\ncalculation time in s: {elapsed}")
     file.write(f"\nmin pixels connected: {min_pixels_connected}\n\n")
     for item in info_list_exclusion:
         file.write(f"{item}\n")
