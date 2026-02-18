@@ -51,6 +51,8 @@
 !Raw_Spatial_Data/weather_data/bias_correction_factors/.gitkeep
 !weather_data
 !weather_data/wind_speed_regions.ipynb
+!results_analysis
+!results_analysis/.gitkeep
 # --- Config files ---
 !configs
 !configs/examples
