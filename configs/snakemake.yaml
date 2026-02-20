@@ -2,8 +2,8 @@
 #region parameters.
 
 study_region_name: Beijing
-scenario: new-smk-test
-technologies: [onshorewind]
+scenario: ref
+technologies: ["onshorewind"]
 
 #snakemake specific parameters
 cores: 4
