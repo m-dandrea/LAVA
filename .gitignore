@@ -63,7 +63,9 @@
 !configs/onshorewind_template.yaml
 !configs/snakemake_template.yaml
 !configs/suitability_template.yaml
+!configs/advanced_settings/
 !configs/advanced_settings/advanced_data_prep_settings_template.yaml
+!configs/advanced_settings/advanced_data_prep_settings.yaml
 !configs/examples
 !configs/examples/config_template_china.yaml
 !configs/examples/snakemake_template_china.yaml
