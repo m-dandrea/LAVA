@@ -17,12 +17,16 @@ import geopandas as gpd
 from OSMPythonTools.nominatim import Nominatim
 from OSMPythonTools.overpass import overpassQueryBuilder, Overpass
 from utils.data_preprocessing import rel_path
+import yaml
 
 import logging
 from OSMPythonTools import logger as osm_logger
 
-# Only log ERROR or CRITICAL; ignore WARNING and below
-osm_logger.setLevel(logging.ERROR)
+# Suppress OSMPythonTools errors (especially geometry building errors)
+osm_logger.setLevel(logging.CRITICAL)
+
+# Suppress pyogrio INFO logs
+logging.getLogger("pyogrio").setLevel(logging.WARNING)
 
 def osm_to_gpkg(
     region_name: str,
@@ -52,19 +56,15 @@ def osm_to_gpkg(
     if feature_key not in features_dict:
         raise ValueError(f"'{feature_key}' not found in features_dict.")
 
-    category, category_element, element_type = features_dict[feature_key]
-
-    if category_element is None or category_element == "":
-    # just require the key to exist
-        selector = [f'"{category}"']
-    elif isinstance(category_element, (list, tuple)):
-    # build a regex that matches any of the values in the list
-    # e.g. ["primary", "secondary"] → ^(primary|secondary)$
-        joined = "|".join(category_element)
-        selector = [f'"{category}"~"^({joined})$"']
+    feature_spec = features_dict[feature_key]
+    
+    # Check if this is a multi-query feature (list of queries)
+    # e.g., [["waterway", "river", ["way", "relation"]], ["water", "lake", ["way", "relation"]]]
+    if isinstance(feature_spec[0], list):
+        query_specs = feature_spec
     else:
-    # single value → exact match
-        selector = [f'"{category}"="{category_element}"']
+        # Single query spec: [category, category_element, element_type]
+        query_specs = [feature_spec]
 
     start_time = time.time()
     os.makedirs(output_dir, exist_ok=True)
@@ -81,20 +81,40 @@ def osm_to_gpkg(
     #print(f"Fetching data for: {location.displayName()} (Area ID: {area_id})")
     
 
-    # some spatial elements like airports or waterbodies can be represented as both ways and relations
-    element_types = element_type if isinstance(element_type, list) else [element_type]
-
     overpass = Overpass()
+    all_elements = []
 
-    query = overpassQueryBuilder(
-        polygon=polygon,
-        elementType=element_types,
-        selector=selector,
-        includeGeometry=True
-        ) # Build Overpass query
-    result = overpass.query(query, timeout=timeout) # Execute query with timeout
+    # Process each query specification
+    for query_spec in query_specs:
+        category, category_element, element_type = query_spec
 
-    if not result.elements():
+        if category_element is None or category_element == "":
+        # just require the key to exist
+            selector = [f'"{category}"']
+        elif isinstance(category_element, (list, tuple)):
+        # build a regex that matches any of the values in the list
+        # e.g. ["primary", "secondary"] → ^(primary|secondary)$
+            joined = "|".join(category_element)
+            selector = [f'"{category}"~"^({joined})$"']
+        else:
+        # single value → exact match
+            selector = [f'"{category}"="{category_element}"']
+
+        # some spatial elements like airports or waterbodies can be represented as both ways and relations
+        element_types = element_type if isinstance(element_type, list) else [element_type]
+
+        query = overpassQueryBuilder(
+            polygon=polygon,
+            elementType=element_types,
+            selector=selector,
+            includeGeometry=True
+            ) # Build Overpass query
+        result = overpass.query(query, timeout=timeout) # Execute query with timeout
+
+        if result.elements():
+            all_elements.extend(result.elements())
+
+    if not all_elements:
         print(f"No elements found for {feature_key} in {region_name}")
         return {}
     
@@ -108,7 +128,7 @@ def osm_to_gpkg(
         "roads": ["LineString"],
         "railways": ["LineString"],
         "airports": ["Polygon"],
-        "waterbodies": ["Polygon"],
+        "waterbodies": ["LineString", "Polygon"],  # LineString for rivers, Polygon for lakes
         "military": ["Polygon"],
     }
 
@@ -120,17 +140,34 @@ def osm_to_gpkg(
 
     geoms_dict = {g: [] for g in relevant_geometries}  # Store features by geometry type
     unsupported_counts = {}  # Track unsupported geometry types
+    seen_ids = set()  # Track seen element IDs to avoid duplicates across queries
 
-    for element in result.elements():  # Iterate over all returned OSM elements
-        geometry = element.geometry()
+    for element in all_elements:  # Iterate over all returned OSM elements
+        # Skip duplicates (elements can appear in multiple queries)
+        element_id = (element.type(), element.id())
+        if element_id in seen_ids:
+            continue
+        seen_ids.add(element_id)
+        
+        # Try to get geometry, skip if it fails (e.g., malformed relations)
+        try:
+            geometry = element.geometry()
+        except Exception as e:
+            #print(f"Skipping element {element.type()}/{element.id()}: Cannot build geometry - {e}")
+            continue
+        
         geometry_type = geometry.get('type')
         if geometry_type in geoms_dict:
             try:
+                # Extract all tags (metadata) from the element
                 props = {
-                    'Name': element.tag('name') or 'Unknown',
-                    'id': str(element.id()),
-                    'Type': element.type()
+                    'osm_id': str(element.id()),
+                    'osm_type': element.type()
                 }
+                # Add all tags from the element
+                if hasattr(element, 'tags') and callable(element.tags):
+                    props.update(element.tags())
+                
                 geom = shape(geometry)  # Convert GeoJSON-like dict to Shapely geometry
                 geoms_dict[geometry_type].append({**props, 'geometry': geom})
             except Exception as e:
@@ -138,17 +175,31 @@ def osm_to_gpkg(
         else:
             unsupported_counts[geometry_type] = unsupported_counts.get(geometry_type, 0) + 1
 
-    # Save each geometry type to its own GeoPackage file
+    # Combine all geometry types into a single GeoPackage
+    gpkg_path = os.path.join(output_dir, f"{feature_key}.gpkg")
+    
+    # Collect all features from all geometry types
+    all_features = []
     for geom_type, features in geoms_dict.items():
-        if not features:
-            continue
-        gdf = gpd.GeoDataFrame(features, crs=f"EPSG:{EPSG}")  # Create GeoDataFrame for this geometry
-        gpkg_path = os.path.join(
-            output_dir, f"overpass_{feature_key}.gpkg"
-        )
-        # Write layer using UTF-8 to ensure cross-platform compatibility
+        if features:
+            all_features.extend(features)
+    
+    if all_features:
+        gdf = gpd.GeoDataFrame(all_features, crs=f"EPSG:{EPSG}")
+        
+        # Drop problematic columns that cause issues with GPKG driver
+        problematic_cols = {'FIXME', 'fixme'}
+        cols_to_drop = [col for col in gdf.columns if col in problematic_cols]
+        if cols_to_drop:
+            gdf = gdf.drop(columns=cols_to_drop)
+        
+        # Write all features to a single layer
         gdf.to_file(gpkg_path, driver="GPKG", encoding="utf-8")
-        print(f"Saved {len(gdf)} {geom_type}(s) to {rel_path(gpkg_path)}")
+        
+        # Count by geometry type for reporting
+        geom_counts = gdf.geometry.geom_type.value_counts().to_dict()
+        count_str = ", ".join([f"{count} {geom_type}(s)" for geom_type, count in geom_counts.items()])
+        print(f"Saved {len(gdf)} features to {rel_path(gpkg_path)} ({count_str})")
 
     #print(f"✅ Finished '{feature_key}' for {region_name} in {time.time() - start_time:.2f} seconds.")
     return unsupported_counts
@@ -156,17 +207,16 @@ def osm_to_gpkg(
 
 
 if __name__ == "__main__":
-    import yaml
-    from utils.data_preprocessing import rel_path
 
-    config_path = os.path.join("configs", "config.yaml")
-    if not os.path.exists(config_path):
-        config_path = os.path.join("configs", "config_template.yaml")
 
-    with open(config_path, "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+    # Load advanced data prep settings
+    advanced_config_path = os.path.join("configs", "advanced_settings", "advanced_data_prep_settings.yaml")
+    if not os.path.exists(advanced_config_path):
+        advanced_config_path = os.path.join("configs", "advanced_settings", "advanced_data_prep_settings_template.yaml")
+    with open(advanced_config_path, "r", encoding="utf-8") as f:
+        config_advanced = yaml.load(f, Loader=yaml.FullLoader)
 
-    osm_features_config = config.get("osm_features_config", {})
+    osm_features_config = config_advanced.get("osm_features_config", {})
 
     polygon = [[48.3, 16.3], [48.3, 16.5], [48.2, 16.6], [48.1, 16.5], [48.1, 16.3]]
     region = "Example Region"
