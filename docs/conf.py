@@ -1,5 +1,5 @@
-project = "LAVA_china"
-author = "m-dandrea"
+project = "LAVA"
+author = "m-dandrea, jome1"
 release = "0.1"
 
 extensions = [
@@ -14,3 +14,4 @@ root_doc = "index"     # (or master_doc = "index")
 
 # Optional; create docs/_static or comment this out
 html_static_path = ["_static"]
+html_css_files = ["custom.css"]
